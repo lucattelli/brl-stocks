@@ -66,3 +66,122 @@ These are behaviour, not construction, so they belong in the spec:
 - All nine agents were the same model. Shared assumptions were not challenged from outside.
 - No critic saw more than one design, so no critique compares them; the comparison above is the synthesiser's.
 - The converged design as a whole has not been attacked, only its three ancestors.
+
+## 7. Check against the approved spec (added 2026-11-23, on resuming the run)
+
+The run was made against a hand-written draft that has since been replaced by `docs/spec.md`, approved as D52. What the spec changes here:
+
+- **The behaviour gaps are closed.** B1 is D38, B2 is D39, B3 is D40, B4 is D48 (a corrupt cache is treated as absent, silently, which also settles the robust design's wish in C3).
+- **C7:** the settle time is 30 minutes for every market (D50, P31).
+- **C5 and the back-off ladders:** the waits are now behaviour. Per row, interval × 2^(n−1) up to 30 minutes; after a refusal, 5 minutes doubling to 30; both shared by the view and one-shot calls (D50, P28). The designs' own ladders (5, 10, 20 s and so on) no longer apply.
+- **X3 is narrowed by D49.** At most 10 requests in any 10 minutes of blocking, all instances together (QR5), cannot be met by per-entry counters alone (about 35 requests by the simplest design's own figure). Some shared record of the block is needed; what stays open is its form and what sets it. Only a refusal is a block (D50, P29).
+- **X1 is not settled by the spec.** QR4 allows 15 requests per entry in 10 minutes, which leaves room for an occasional duplicated round.
+- **X5 meets a new rule:** the cache drops tickers that left the config (D50, P45), where the designs pruned by age so that two configs could share a cache.
+- **New points no design covered:** how a one-shot call knows that the config changed (D39), what happens with an unwritable cache folder in one-shot (D50, P42 against QR4), how the status line derives a market's state (D47), and how a test replaces the source (S17.2).
+
+`converged.md` is the design that follows from C1–C12, these changes, and the coordinator's provisional side of X1–X5. It is what stage 7 attacks.
+
+## 8. Stage 7, round 1: Codex attacks the converged design (2026-11-23)
+
+Critic: Codex, `gpt-6.2-astra`, high reasoning, read-only; one agent, 66,759 tokens. It followed the format (ratings, scenarios, a fact check with sources). File: `critique-converged-codex.md`. It reviewed revision 1 of `converged.md`.
+
+Outcome: 2 fatal, 7 serious, 1 minor, 2 excess, 2 wrong facts. This is the first review by another model family, and it found faults that nine Claude agents had not.
+
+| # | Rating | Finding | Coordinator's handling in revision 2 |
+|---|---|---|---|
+| 1 | fatal | Four workers and a 15 s deadline cannot fetch 23 rows on `r` when answers take 5 s; S7.1 fails | Fixed in part (8 workers, 5 s per request, cut-off rows stay due). The criterion's wording is a question for the user (B8) |
+| 2 | fatal | `app` and `tui` import each other; a struct map key with only `MarshalText` cannot be decoded, so every restart loses the cache silently (D48 hides it) | Fixed: a `deps` package, `UnmarshalText`, a round-trip test |
+| 3 | serious | One stamp stood for "queued", "sent" and "committed": a killed holder leaves 19 rows marked attempted that never were; a refusal can be lost before the final write; a stopped holder blocks everyone | Fixed for the first two (round stamp, stamp on send, refusal written at once). The stopped holder is the strongest surviving objection to X1 |
+| 4 | serious | The two-connection cutoff invents failures on rows never tried (against spec 6.3); a probe that times out or hits a not-found ticker never resolves the block | Fixed: cutoff deleted; probe outcomes defined |
+| 5 | serious | Without a writable cache nothing paces `print`: 6,900 requests in ten minutes; D49 has no exemption | Behaviour gap for the user (B5) |
+| 6 | serious | Two configs on one cache erase each other's quotes (P45); the config hash is not scoped to a config | Hash replaced by the config's modification time; pruning is a behaviour gap for the user (B6) |
+| 7 | serious | After sleep a row with yesterday's session can read fresh while the header says open; the closing quote's time stamp never reaches the session end | Fixed: `Classify` uses the market's state; a settle window replaces the time-stamp match |
+| 8 | serious | One quote per ticker does not bound the cache to 10% growth: the intraday series grows all day | A flaw in the criterion (QR8, S15.3), for the user (B7) |
+| 9 | serious | `Stat` inside `Update`; a late load can overwrite a newer result; a redirect to another host breaks QR12 | Fixed: stat in a command; order-independent merge; no cross-host redirects |
+
+Wrong facts: "two equal stamps prove a save finished" (dropped); "flock limits the tool to Linux and macOS" (it is any Unix-like system).
+
+What held up, by the critic's own count: with a writable cache and one config, the view plus 300 `print` calls stay near 230 to 253 requests in ten minutes (QR4 allows 345); under continuous refusals, 5 requests in ten minutes (QR5 allows 10).
+
+Its view of the provisional choices: X1 conditional (a short lock around a claim is stronger when a holder stalls); X2 keep; X3 conditional (a separate block file survives the cache being replaced); X4 keep; X5 reject as first written (now narrowed); Bubble Tea version 2 keep.
+
+### Behaviour gaps raised by this round
+
+| # | Gap | Provisional answer in `converged.md` |
+|---|---|---|
+| B5 | What `print` does when the cache folder cannot be written (D50's P42 against D49) | It does not fetch; it prints what the cache holds and warns. The view still fetches |
+| B6 | Whether the cache drops tickers that left the config (D50's P45) when two configs can share one cache | Prune by age (7 days) instead; amends P45 and S15.6 |
+| B7 | How "no history" is measured (QR8, S15.3), since one day's series grows | One quote and at most one trading day of series per ticker; reword the criterion |
+| B8 | Whether `r` must send every request within 2 seconds (S7.1) or start within 2 seconds (P33) | Start within 2 seconds |
+
+A second round was started on revision 2, because round 1 produced fatal and serious findings that changed the design.
+
+## 9. Stage 7, round 2: Codex attacks revision 2 (2026-11-23)
+
+Critic: a fresh Codex session, same model and settings; one agent, 80,876 tokens. It followed the format. File: `critique-converged-codex-2.md`.
+
+Outcome: 2 fatal, 6 serious, 1 minor, 1 excess. The fixes for round 1's findings 2, 4 (cutoff), 7 (stale after sleep, in part) and 9 held. What it found:
+
+| # | Rating | Finding | Where it goes |
+|---|---|---|---|
+| 1 | fatal | With 4-second answers, 12 of 20 rows miss S7.1's two seconds. The round stamp is the wrong grain: it lets a late-wave row be requested again within 5 seconds and suppresses rows the round never touched (spec 6.5 is per row) | The criterion's wording: Q61. The grain: per-row claims, option C of Q39 |
+| 2 | fatal | QR5 holds with intact state (9 requests in ten minutes). It fails if the cache file is emptied and then replaced by a copy from before the block: 16 requests | Q41: the block record in a file of its own |
+| 3 | serious | A busy lock drops work: `print` with another watchlist loses the lock and prints five-minute-old quotes without fetching (S13.3). A stopped holder freezes every caller | Q39 |
+| 4 | serious | The merge orders entries, not the source's health: an old read can erase a block's countdown. A closed-market cycle with nothing due does not restore an emptied file | Q41, and point C17 of Q38 |
+| 5 | serious | Close and open are guessed: a late US correction is missed, B3 is polled for 30 minutes after a close that arrived in 2, seven holiday probes per entry are 161 requests where spec 6.1 says none, a delayed opening stops probing for the day | Waits on research (F14 and the closing-quote measurement): Q62 |
+| 6 | serious | Probe and display rules miss cases: no eligible probe when every wanted ticker is not found; a probe answered with a server error has no rule; `Classify` needs an order of precedence (no data before stale, not found first) | Detail for the design document; recorded |
+| 7 | serious | A config replaced with an older modification time is reloaded but not-found tickers are not retried; two parses can finish out of order; a 7-day retention restores a quote that S15.6 forbids | Q60; the rest is detail for the design document |
+| 8 | serious | The two proposed exceptions change acceptance tests (S15.5, QR8). Keeping only the ten displayed sparkline points would hold QR8 as written | Q59; point C14 of Q38 |
+| 9 | minor | No warning field on a config reload; a stand-in source can be served Yahoo's cached prices; real HTTP deadlines under a fixed test clock | Detail for the design document |
+| 10 | excess | The 7-day retention | Q60 |
+
+Wrong fact: a `flock` is released on unlock or when the last descriptor closes, not "on death only".
+
+What held up: with a healthy source, an intact cache and one watchlist, 230 to 253 requests in ten minutes (QR4 allows 345); re-planning under the lock prevents two winners; fresh `print` calls send nothing; a silent cold start after truncation; reading the config through the symlink; keeping the last valid config.
+
+Its view of the provisional choices: X1 keep the non-blocking lock for ordinary overlap, with a short expiring claim as the stronger alternative when a holder stalls; X2 keep; X3 reject (a separate pacing record survives the quote data being replaced); X4 keep; X5 keep, once ordering is defined; Bubble Tea version 2 keep.
+
+### Why the attack stops here
+
+Two rounds were run; the limit is three. A third was not started, because what remains is no longer about the design's shape:
+
+- findings 1 to 4 land on the questions the user has to decide (Q39, Q41) or on wording in the spec (Q59 to Q61);
+- finding 5 rests on facts that are still unverified (F14, the closing-quote delay), and one of them can only be checked on 2026-11-26;
+- findings 6, 7 and 9 are rules of detail that the design document must state and tests must pin down. Another round would attack the coordinator's patches, not a decision.
+
+### Converged points after the attack
+
+C1–C12 stand, as changed in section 7. Added or changed by the two rounds:
+
+| # | Point |
+|---|---|
+| C2 | `Update` does no I/O at all, including `stat`: every file access is a command |
+| C3 | The cache's keys are encoded and decoded by a matching pair of text methods, with a round-trip test for every market |
+| C4 | A snapshot that arrives is merged into the view's, never assigned; the merge does not depend on arrival order |
+| C6 | The 5-second guard on a forced refresh is per row |
+| C8 | A not-found ticker is retried hourly, or when the config file is newer than its last attempt |
+| C11 | A market is open when the newest session among its entries contains now; a row's stale state uses the market's state |
+| C13 | A refusal is saved the moment it is seen; after the wait, one probe request; a probe's outcomes are all defined |
+| C14 | The cache keeps the sparkline as the ten points shown, so its size does not grow during the day (QR8 as written) |
+| C15 | Tests inject the source, the clock and the environment; the heartbeat is a message; the whole tool runs through one function |
+| C16 | 8 parallel requests, 5 seconds each; a round ends after 10 seconds for `print`, 20 for the view (guesses) |
+| C17 | The file is the authority. The view's memory only keeps the screen alive when the file is emptied, and the view rewrites the file at its next write |
+
+### Still disagreed, as they go to the user
+
+- **X1 (Q39):** A, a non-blocking lock held across the fetch; B, no lock, rename and a claim stamp; C, a short lock around each write, with per-row claims and the fetch outside the lock. C is the coordinator's recommendation after the attack. It is the simplest design's claim plus the lock that stops lost writes; as a combination it was not attacked.
+- **X2 (Q40):** one instrument per call (recommended; both Codex rounds agree) against a batch (two of three authors).
+- **X3 (Q41):** the block record in the cache file, or in a file of its own (recommended after round 2).
+- **X4 (Q42):** no step layer (recommended; two of three authors and both Codex rounds) against a step layer.
+- **X5:** folded into C17.
+
+### What this run did not test (update of section 6)
+
+- The critics from another family were both the same model, in two sessions.
+- Option C of X1 and the separate block file were recommended after the last round and were not attacked.
+- Nothing was built or run; every threshold is a guess.
+- The session, holiday and closing rules rest on unverified facts.
+
+### Cost of stage 7
+
+No Claude subagents. Codex: one test prompt (3,834 tokens) and two critics (66,759 and 80,876 tokens).
