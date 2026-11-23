@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D52); updated the same day for D59, D60 and D62, which came out of the design run. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D63, facts F1–F30).
+Status: approved, 2026-11-23 (D67). First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D67, facts F1–F30).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -311,10 +311,10 @@ source unreachable: 1 row not updated · next attempt 10:43
 B3 open · US closed · sort: file order · ? help
 ```
 
-- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50).
+- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50). The Ibovespa is shown in whole points and the S&P 500 with two decimals, as the examples in D51 show them (D65). Each entry's percent follows the format of its entry (D51).
 - **Row.** Ticker, name, last price, day change (value and percent), day low and high, quote time (D9), then the sparkline (D13).
 - **Currency.** B3 prices carry `R$`, US prices `US$`; nothing is converted (D10).
-- **Numbers.** Each row uses the format of its currency: R$ rows a comma for decimals and a dot for thousands (`R$ 1.038,42`), US$ rows a dot for decimals and a comma for thousands (`US$ 1,229.87`). This covers every number of the row: price, change value, percent, low and high. Prices have two decimals (D46). In the summary line, each entry uses the format of its market, and USD/BRL the R$ format (D51).
+- **Numbers.** Each row uses the format of its currency: R$ rows a comma for decimals and a dot for thousands (`R$ 1.038,42`), US$ rows a dot for decimals and a comma for thousands (`US$ 1,229.87`). This covers the amounts in the row's currency: the price, the change value and the day low and high (D46). The day change percent is not an amount in a currency; it follows the same format (D64). Prices, including the day low and high, have two decimals (D46); so have the change value and the percent (D65). Only the last price carries the currency symbol, followed by one space; values are rounded half away from zero; a minus sign is the plain hyphen; a change of zero reads `+0,00` or `+0.00` (D66). In the summary line, each entry uses the format of its market, and USD/BRL the R$ format (D51).
 - **Day change.** Always with a sign. Green when up, red when down, from the terminal's own palette; no colour when zero (D25, D50). No colour at all when `NO_COLOR` is set (D25).
 - **Quote time.** In the machine's local time, as `HH:MM`; as `DD/MM` when the quote is not from today (D50).
 - **Sparkline.** The regular session of the current or last trading day, 10 characters wide, earliest on the left, in the colour of the day change (D13, D50).
@@ -353,7 +353,7 @@ VALE3   Vale ON              R$ 61,07   +0,00  +0,00%    60,80    61,55  10:14 !
 B3 open · US closed
 ```
 
-The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
+The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; numbers are formatted as in the view (D46, D51); stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
 
 ### 7.5 One-shot JSON
 
@@ -388,7 +388,7 @@ One JSON document on standard output (D18). Shape (D43):
 }
 ```
 
-- Prices are JSON numbers; times are UTC in RFC 3339; a missing value is `null` (D43).
+- Prices are JSON numbers; times are UTC in RFC 3339; a missing value is `null` (D43). Numbers in the document are neither rounded nor formatted for a currency (D66).
 - `status` of a row: `fresh`, `stale`, `not_found` or `no_data` (D43).
 - Tickers outside groups are in a first group whose `name` is `null` (D43).
 - The intraday series is not in the document (D43).
@@ -430,6 +430,14 @@ As the user, I want a full-screen view of my watchlist, so that I see the price 
 - **S1.5** Given no cache, when the view starts, then each row shows its ticker and `—` in the data columns until its first quote arrives. (D50)
 - **S1.6** Given a terminal too narrow for the full row, when the view is drawn, then ticker, last price, day change percent and quote time are still shown. (D50)
 - **S1.7** Given a quote from an earlier day, when the row is drawn, then the quote time is shown as a date (`DD/MM`). (D50)
+- **S1.8** Given a B3 row whose last price is 1038.42, when the row is drawn, then the price reads `R$ 1.038,42`. (D46)
+- **S1.9** Given a US row whose last price is 1229.87, when the row is drawn, then the price reads `US$ 1,229.87`. (D46)
+- **S1.10** Given a B3 row whose day change is +0.31, when the row is drawn, then the change value reads `+0,31`. (D46, D50, D65)
+- **S1.11** Given a B3 row whose day change is +0.81 percent, when the row is drawn, then the percent reads `+0,81%`. (D50, D64, D65)
+- **S1.12** Given a US row whose day change is -0.48 percent, when the row is drawn, then the percent reads `-0.48%`. (D64, D65, D66)
+- **S1.13** Given a B3 row whose day change is exactly zero, when the row is drawn, then the change value reads `+0,00`. (D50, D66)
+- **S1.14** Given a B3 row whose last price is 38.425, when the row is drawn, then the price reads `R$ 38,43`. (D46, D66)
+- **S1.15** Given a B3 row whose day low is 38.02, when the row is drawn, then the low reads `38,02`, with no currency symbol. (D46, D66)
 
 ### S2 — Summary line
 
@@ -439,6 +447,10 @@ As the user, I want the Ibovespa, the S&P 500 and USD/BRL always in sight, so th
 - **S2.2** Given `summary = ["USDBRL"]`, when the view is drawn, then the summary line shows only USD/BRL. (D11, D42)
 - **S2.3** Given `summary = []`, when the view is drawn, then there is no summary line. (D42)
 - **S2.4** Given more rows than fit the screen, when the user scrolls, then the summary line stays in place. (D11)
+- **S2.5** Given an Ibovespa value of 158432.10, when the summary line is drawn, then the Ibovespa value reads `158.432`. (D51, D65)
+- **S2.6** Given an S&P 500 value of 6812.4, when the summary line is drawn, then the S&P 500 value reads `6,812.40`. (D51, D65)
+- **S2.7** Given a USD/BRL rate of 5.4321, when the summary line is drawn, then the USD/BRL value reads `5,4321`. (D50, D51)
+- **S2.8** Given an Ibovespa day change of +0.32 percent, when the summary line is drawn, then its percent reads `+0,32%`. (D50, D51, D65)
 
 ### S3 — Two markets, plain tickers, own currency
 
@@ -594,6 +606,9 @@ As a script or the user at a prompt, I want the watchlist printed once, so that 
 - **S13.14** Given the US market is closed and B3 is open, when `brl-stocks print` is run, then the last line of the output reads `B3 open · US closed`. (D15, D50)
 - **S13.15** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then one line on the error stream names the cause. (D19, D50)
 - **S13.16** Given a row whose fetch failed 30 seconds ago, when `brl-stocks print` is run without `--refresh`, then that row is not requested. (D19, D50)
+- **S13.17** Given a B3 row whose last price is 38.42, when `brl-stocks print` is run, then the table shows `R$ 38,42` in that row. (D46)
+- **S13.18** Given a US row whose last price is 229.87, when `brl-stocks print` is run, then the table shows `US$ 229.87` in that row. (D46)
+- **S13.19** Given a default summary and an Ibovespa value of 158432.10, when `brl-stocks print` is run, then the first line shows `158.432`. (D51, D65)
 
 ### S14 — One-shot JSON
 
@@ -610,6 +625,7 @@ As a script, I want the watchlist as JSON, so that I can parse it without scrapi
 - **S14.9** Given a row with a quote, when the document is read, then its prices are JSON numbers. (D43)
 - **S14.10** Given a row with a quote, when the document is read, then its times are UTC in RFC 3339. (D43)
 - **S14.11** Given a closed market, when `brl-stocks print --json` is run, then the rows of that market have `market_state` `closed`. (D15, D43)
+- **S14.12** Given a B3 row whose last price is 38.425, when `brl-stocks print --json` is run, then its `price` is the number 38.425. (D43, D66)
 
 ### S15 — The last quotes are kept between runs
 
@@ -720,7 +736,7 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P21 | Quote time is local time `HH:MM`, or `DD/MM` when not from today | 7.3, S1.7 | settled as D50 |
 | P22 | The stale mark is `!` and the age since the last successful fetch (`!45s`, `!12m`, `!3h`, `!2d`) | 7.3, S6.10 | settled as D50 |
 | P23 | A row with no data shows `—` in its data columns; a not-found row shows `—` beside "not found" | 6.2, 7.3, S1.5 | settled as D50 |
-| P24 | The day change always has a sign; zero is uncoloured; colour covers the change value, the percent and the sparkline | 7.3, S16.4 | settled as D50 |
+| P24 | The day change always has a sign; zero is uncoloured; colour covers the change value, the percent and the sparkline, S1.10, S1.11, S1.13, S2.8 | 7.3, S16.4 | settled as D50 |
 | P25 | The sparkline covers the regular session of the current or last trading day, 10 characters wide, earliest on the left | 7.3, S10.2 | settled as D50 |
 | P26 | Sort cycle: file order, day change percent (highest first), ticker A to Z. Sorting is inside each group; rows without a quote go last; the status line names the sort; it is not remembered between runs | 7.3, S9 | settled as D50 |
 | P27 | Ctrl+C quits like `q` (an addition to the keys of D32); quitting exits with status 0 and restores the terminal; any key closes the help; a scroll key moves one row | 7.3, S1.3 | settled as D50 |
@@ -730,7 +746,7 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P31 | After a market closes, its rows are refreshed until the closing quote has arrived, for at most 30 minutes. This is an exception to D15, and is point C7 of the design run (Q38). The 30 minutes rest on a fact to measure (section 12) | 4, 6.1, S5.3, S5.8 | settled as D50 |
 | P32 | A row with no quote is fetched even when its market may be closed (an exception to D15) | 6.5 | settled as D50 |
 | P33 | `r` and `--refresh` fetch rows of closed markets too (an exception to D15) and start within 2 seconds. They skip rows attempted less than 5 seconds ago, and `--refresh` obeys a block as `r` does (both limit the forced fetch of D23). Not-found rows keep their hourly wait (D39) | 6.3, 6.5, S7.1, S7.2, S7.6, S7.7, S13.10 | settled as D50 |
-| P34 | Summary entries show value and day change percent; indices without a currency symbol; USD/BRL with four decimals. Ibovespa follows B3's hours, S&P 500 the US hours, USD/BRL its own hours as the source reports them (what it reports is a fact to look up, section 12) | 4, 6.1, 7.3, S2.1 | settled as D50 |
+| P34 | Summary entries show value and day change percent; indices without a currency symbol; USD/BRL with four decimals. Ibovespa follows B3's hours, S&P 500 the US hours, USD/BRL its own hours as the source reports them (what it reports is a fact to look up, section 12), S2.7 | 4, 6.1, 7.3, S2.1 | settled as D50 |
 | P35 | Only regular-session prices are shown. Whether the default source's last price can include pre-market or after-hours trades is a fact to look up (section 12) | 2, S5.11 | settled as D50 |
 | P36 | The one-shot table has the summary line, a header row, the standard columns without the sparkline, group names on their own lines, and a last line with the market states; failure causes and warnings go to the error stream | 7.4, S13.8, S13.13–S13.15 | settled as D50 |
 | P37 | One-shot freshness is judged per row; a call waits at most 10 seconds for its fetches | 6.5, 7.6, S13.9 | settled as D50 |
@@ -743,6 +759,9 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P44 | Tolerances for timed criteria: one refresh more or fewer in 10 minutes (S5.1, S5.2); refresh resumes within one interval of the open (S5.7); the cache may vary by 10% in size (S15.3, QR8) | S5.1, S5.2, S5.7, S15.3, QR8 | settled as D50 |
 | P45 | The cache drops the quotes of tickers that left the config | S15.6 | settled as D50 |
 | P46 | In the summary line, each entry uses the format of its market: Ibovespa the R$ format (`158.432`), S&P 500 the US$ format (`6,812.40`), and USD/BRL the R$ format (`5,4321`) | 7.3 | settled as D51 |
+| P47 | The day change percent of a row follows the number format of the row's currency (`+0,81%` on R$ rows, `-0.48%` on US$ rows). D46 covers "each row's numbers"; the percent is the one number of the row that is not an amount in its currency, and the log marks its inclusion as a reading "to confirm". (The summary line's percents are already covered by D51) | 7.3, S1.11, S1.12 | settled as D64 |
+| P48 | Decimals: the change value and the percent have two; the Ibovespa is shown in whole points and the S&P 500 with two decimals. For the indices this turns the examples of D51 into a rule. (Prices have two by D46, USD/BRL four by D50) | 7.3, 7.4, S1.10–S1.12, S2.5, S2.6, S2.8, S13.19 | settled as D65 |
+| P49 | Formatting details: only the last price carries the currency symbol, followed by one space; values are rounded half away from zero to the decimals shown; a minus sign is the plain hyphen; a change of zero, or one that rounds to zero, reads `+0,00` or `+0.00`; numbers in the JSON output are neither rounded nor formatted | 7.3, 7.5, S1.12–S1.15, S14.12 | settled as D66 |
 
 ## 12. Open and unverified
 
@@ -810,12 +829,12 @@ Every decision in the log, and where the spec realises it.
 | D43 | 7.5, S14.3, S14.9–S14.11 |
 | D44 | 7.6, S14.4–S14.8 |
 | D45 | 6.4, 7.2, 7.6, S11.9–S11.11, S11.16, S14.8 |
-| D46 | 7.3, 7.4 |
+| D46 | 7.3, 7.4, S1.8–S1.10, S1.14, S1.15, S13.17, S13.18 |
 | D47 | 7.3, S5.5 |
 | D48 | 7.7, S15.4, S15.7 |
 | D49 | QR4, QR5 |
 | D50 | The 36 routine proposals P10–P45; each is listed in section 11 with the places that realise it |
-| D51 | 7.3, 7.4 |
+| D51 | 7.3, 7.4, S2.5–S2.8, S13.19 |
 | D52 | process (approval of this spec) |
 | D53–D58 | design, see section 10 and `docs/design.md` |
 | D59 | 2 (non-goals) |
@@ -823,3 +842,7 @@ Every decision in the log, and where the spec realises it.
 | D61 | No change: D50's rule on tickers that left the config stands (S15.6) |
 | D62 | 6.3, S7.1, S7.2, S7.9 |
 | D63 | process (approval of the design document) |
+| D64 | 7.3, S1.11, S1.12 |
+| D65 | 7.3, 7.4, S1.10–S1.12, S2.5, S2.6, S2.8, S13.19 |
+| D66 | 7.3, 7.5, S1.12–S1.15, S14.12 |
+| D67 | process (approval of this spec as updated) |
