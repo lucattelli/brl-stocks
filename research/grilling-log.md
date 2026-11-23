@@ -1,0 +1,106 @@
+# Stock Monitor TUI — Grilling Log
+
+Running record of the grilling session for the stock monitor TUI. Input for the future spec. Started 2026-11-23.
+
+This is a fresh start: an earlier log was deleted by the user, so numbering begins at Q1 / D1 / F1.
+
+Sources so far:
+- `research/market-data-sources-2026-11.md` — free and cheap quote APIs for B3 and US, with live tests (2026-11-23)
+- `research/existing-stock-tuis-2026-11.md` — existing terminal stock monitors, from docs and issue trackers; no tool was installed or run (2026-11-23)
+
+---
+
+## Decisions
+
+| # | Decision | Rationale / notes | Date |
+|---|---|---|---|
+| D1 | **Personal tool first, open-sourced if it turns out well.** Built for the user, kept clean enough to publish. | Q1, recommendation accepted. Implies: no secrets or personal watchlist in the repo; providers that need a key are bring-your-own-key. | 2026-11-23 |
+| D2 | **B3 and US in the first version.** | Q2, overrides recommendation (B3 only). F2 makes this cheap: one free source covers both. Risk recorded: two currencies, two sets of market hours and two ticker conventions enter v1 (see Q10 and held questions). | 2026-11-23 |
+| D3 | **The core job is a watchlist monitor:** current price and day change for followed tickers. Portfolio and analysis are later branches. | Q3, recommendation accepted. | 2026-11-23 |
+| D4 | **A delay of about 15 minutes is acceptable.** | Q4, recommendation accepted. Matches the free ceiling for B3 (F1). The delay of the free keyless source for US tickers is not yet measured (market was closed during the test). | 2026-11-23 |
+| D5 | **Free data only.** | Q5, recommendation accepted. Revisit only if the free options prove unusable. | 2026-11-23 |
+| D6 | **Three ways to run:** always open in a pane with automatic refresh, launched on demand, and a one-shot mode that prints and exits (for scripts or a status bar). | Q6, overrides recommendation (always-open only). Implies: the fetching and formatting core must be separate from the full-screen interface. | 2026-11-23 |
+| D7 | **Yahoo's unofficial endpoint is the default data source, behind a provider interface** so another source can be swapped in. | Q7, recommendation accepted. Risk accepted: the source may break or be blocked without notice (F3). | 2026-11-23 |
+| D8 | **Designed for up to 20 tickers.** | Q8, overrides recommendation (up to 50). Lowers request load (one request per ticker, F3) and makes scrolling a minor concern. | 2026-11-23 |
+| D9 | **Standard row:** ticker, name, last price, day change (value and percent), day low and high, time of the quote. | Q9, recommendation accepted. The quote time keeps the delay visible. | 2026-11-23 |
+| D10 | **Prices in their own currency** (R$ and US$), no conversion. | Q10, recommendation accepted. Conversion belongs to a portfolio, not a watchlist. | 2026-11-23 |
+| D11 | **Fixed summary line** with Ibovespa, S&P 500 and USD/BRL above the watchlist, configurable. | Q11, recommendation accepted. Adds 3 requests per refresh. | 2026-11-23 |
+| D12 | **The watchlist is a hand-edited config file**, reloaded by the app. In-app editing is a later version. | Q12, recommendation accepted. | 2026-11-23 |
+| D13 | **The only extra in the first version is an intraday sparkline per row.** Alerts, detail view with chart, and news wait. | Q13, recommendation accepted. | 2026-11-23 |
+| D14 | **Refresh every 60 seconds by default while a market is open**, configurable. | Q14, recommendation accepted. | 2026-11-23 |
+| D15 | **Closed markets are not refreshed:** show the last close and mark the market as closed, per market (B3 and US hours differ). | Q15, recommendation accepted. Needs a way to know market hours and holidays (research backlog). | 2026-11-23 |
+| D16 | **Optional named groups** defined in the config file, shown as section headers. | Q16, recommendation accepted. | 2026-11-23 |
+| D17 | **Tickers are written plain** (`PETR4`, `AAPL`); the market is inferred from the ticker's shape, with a market prefix (`B3:`, `US:`) available when ambiguous. | Q17, recommendation accepted. Keeps the file independent of the data source. The inference rule is still to be specified. | 2026-11-23 |
+| D18 | **One-shot mode prints an aligned table by default, with a `--json` flag.** No custom format template. | Q18, recommendation accepted. | 2026-11-23 |
+| D19 | **On a failed refresh:** keep the last known prices, mark them stale with their age, show one error line, retry with increasing waits. | Q19, recommendation accepted. | 2026-11-23 |
+| D20 | **A small on-disk cache of the last quotes only**; no price history is stored. | Q20, recommendation accepted. Serves instant start and protects the source from frequent one-shot calls. | 2026-11-23 |
+| D21 | **Build a small new tool**, borrowing ideas from existing ones (ticker's table and groups, mop's header, tickerbar's one-shot contract). No fork, no adoption. | Q21, recommendation accepted. Based on F8, F9, F12. | 2026-11-23 |
+| D22 | **Written in Go.** | Q22, recommendation accepted. Fast start for one-shot calls, single binary, HTTP and JSON in the standard library. | 2026-11-23 |
+| D23 | **One-shot calls print from the cache when it is at most one refresh interval old** (60 seconds by default), with a flag to force a fetch. | Q23, recommendation accepted. | 2026-11-23 |
+| D24 | **MIT licence** if open-sourced. | Q24, recommendation accepted. | 2026-11-23 |
+| D25 | **Green for up, red for down, from the terminal's own palette;** plain text when `NO_COLOR` is set or output is piped. | Q25, recommendation accepted. | 2026-11-23 |
+| D26 | **The command is `brl-stocks`**, same as the repo; it also names the config and cache folders. | Q26, overrides recommendation (`cota`). | 2026-11-23 |
+| D27 | **Bubble Tea with Lip Gloss** draws the full-screen view. | Q27, recommendation accepted. Current version and maintenance still to confirm (backlog). | 2026-11-23 |
+| D28 | **The config file is TOML.** | Q28, recommendation accepted. One small dependency, accepted for comments and readability. | 2026-11-23 |
+| D29 | **Config at `~/.config/brl-stocks/config.toml`, cache at `~/.cache/brl-stocks/`, with a `--config` flag. The config must live in the user's `the-2026-dev-env` repo and reach `~/.config` through a symlink.** | Q29, recommendation accepted with an addition by the user. Implies: the app must work through a symlink and never replace it (see F16, F17, Q33–Q35). | 2026-11-23 |
+| D30 | **Ticker inference rule:** four letters followed by one or two digits, with an optional trailing `F`, is B3; anything else is US; a `B3:` or `US:` prefix overrides. | Q30, recommendation accepted. Details D17. | 2026-11-23 |
+| D31 | **Rows in file order by default, with a key to cycle sorting** by day change and by ticker. | Q31, recommendation accepted. | 2026-11-23 |
+| D32 | **Keys in the first version:** `q` quit, `r` refresh now, `s` cycle sort, arrows or `j`/`k` scroll, `?` help. Nothing else. | Q32, recommendation accepted. | 2026-11-23 |
+| D33 | **A public watchlist is acceptable:** `config.toml`, including the tickers, lives in the public dev-env repo. | Q33, recommendation accepted. It holds no positions or amounts (D3). Revisit if a portfolio is ever added. | 2026-11-23 |
+| D34 | **The work includes wiring into `the-2026-dev-env`:** a `brl-stocks/config.toml` folder at its root and a `link "$repo/brl-stocks" "$HOME/.config/brl-stocks"` line in `bin/devenv-setup`, as a separate commit in that repo, made only when the user asks. | Q34, recommendation accepted. Follows F16. | 2026-11-23 |
+| D35 | **With no config file, the tool runs with a small built-in example watchlist** and says where to put a config. It never writes the config file. | Q35, recommendation accepted. Keeps the symlinked folder untouched (D29). | 2026-11-23 |
+| D36 | **Installed by hand for now** (`go install` from the repo, Go managed by mise); added to `devenv-setup` once the tool is stable. | Q36, recommendation accepted. | 2026-11-23 |
+| D37 | **Shared understanding confirmed** for the first version as summarised in D1–D36. The next step is a spec written from this log; no code before that. | Q37, recommendation accepted. | 2026-11-23 |
+
+## Facts learned
+
+- F1 — No free real-time source for B3 was found; a 15-minute delay is the realistic free ceiling. US real time is free with a key (Finnhub, Alpaca). (`market-data-sources-2026-11.md` §2.2, §4)
+- F2 — Yahoo's unofficial chart endpoint is the only free, keyless API found that covers both B3 and US. Tested 2026-11-23 with a stock, a fractional ticker, a FII, an ETF, a BDR, ^BVSP and AAPL. Measured B3 lag: 904 to 1053 s; USD/BRL about 10 s. (§2.1)
+- F3 — Yahoo limits: one request per ticker (the multi-symbol endpoint needs cookie and crumb); FIIs, ETFs and BDRs are all labelled `EQUITY`; it is unofficial and has had waves of 429 blocks. (§2.1, §2.3)
+- F4 — brapi.dev free tier: 15,000 requests/month, one ticker per request, quotes updated every 30 minutes, 3 months of history (about 20 tickers every 30 minutes). Paid from R$ 99.99/month billed yearly for 15-minute updates. Terms allow display in your own product but forbid proxies or wrappers. (§2.3)
+- F5 — B3's own site endpoint (`cotacao.b3.com.br/mds/api/v1/instrumentQuotation/<ticker>`) works without a key, 15 minutes delayed, but is undocumented. The official COTAHIST daily file is public and end of day. (§2.3)
+- F6 — Poor fits: Stooq (CAPTCHA and JavaScript check), Alpha Vantage (25 requests/day), Twelve Data (B3 end of day only, from US$ 29), Massive, formerly Polygon (US only, real time at US$ 199). (§2.2)
+- F7 — [unverified] Finnhub and Financial Modeling Prep pricing could not be read; HG Brasil (400 requests/day free) does not publish its delay. (§3)
+- F8 — No existing tool covers B3 and US with all three run modes (D2, D6). No B3-focused terminal monitor was found. (`existing-stock-tuis-2026-11.md` §2.4, §4)
+- F9 — `ticker` (Go, Bubble Tea, GPL-3.0, 6,270 stars, v5.3.0 of 2026-06-21) is the closest: `.SA` symbols confirmed by its maintainer in 2021, groups, BRL conversion. Gaps: its print mode outputs holdings only, not the watchlist (requested since 2021–22); no index or exchange-rate header, no alerts, no in-app editing, no provider layer (requested since 2021). B3 support is from docs and issues, not tested. (§2.3, §2.4)
+- F10 — Other tools: `mop` (Go, MIT) has in-app editing and a market header, and its maintainer declined a one-shot mode; `tickrs` (Rust, MIT) is barely maintained and its longer charts are empty for non-US symbols; `tickerbar` (Rust, Waybar) has the best one-shot contract (always valid JSON, exit 0, a `state` field, cached closes for closed markets) but no B3 provider and US hours only. (§2.1, §2.3)
+- F11 — 10 of 14 compared tools depend on Yahoo, and it is their main source of bug reports: about four breakage waves from 2023 to 2025 (ticker took about 33 days to fix one; tickrs had no data for about five months). The breaks hit the batch quote endpoint (cookie and crumb); the chart endpoint mostly survived. (§2.5, §3)
+- F12 — Research assessment, medium confidence: build small; borrow ticker's table and groups, mop's header and tickerbar's one-shot contract; fork ticker only if Go and GPL-3.0 are acceptable. (§4)
+- F13 — One request to Yahoo's chart endpoint (`interval=5m&range=1d`) returns everything a row needs: last price, previous close, day low and high, name, currency, quote time, and the intraday series for the sparkline. No extra request per ticker for D13. (own test, 2026-11-23 14:41 UTC, PETR4.SA and AAPL)
+- F14 — The same response carries the day's regular trading period (start and end as timestamps) and the exchange time zone, per ticker. This can drive D15 without a separate market calendar; whether it handles holidays correctly is [unverified]. (own test, 2026-11-23)
+- F15 — Measured during open markets: B3 quote lag 902 s (about 15 minutes); US quote lag 1 s, so US quotes from this source are effectively real time. (own test, 2026-11-23 14:41 UTC)
+- F16 — `~/the-2026-dev-env` is the user's dev-environment repo. Its convention: one folder per tool at the repo root, linked as a whole directory by `bin/devenv-setup` with `link "$repo/<tool>" "$HOME/.config/<tool>"` (nvim, tmux, mise, alacritty are linked this way). (local inspection, `bin/devenv-setup` lines 33–46 and 368–371, 2026-11-23)
+- F17 — The `the-2026-dev-env` repo is public on GitHub, so a watchlist kept there is public. (`gh repo view`, 2026-11-23)
+
+## Assumptions (marked, not yet confirmed)
+
+- A1 — "brl" in the repo name `brl-stocks` is not taken to mean Brazilian real / B3. Which markets are covered is asked in Q2.
+
+## Open questions (frontier)
+
+_Questions waiting on research or on the user, and what they wait on._
+
+The frontier is empty as of 2026-11-23 (last question asked: Q37). Nothing is waiting on the user.
+
+Not blocking, still unverified (see the research backlog): holiday behaviour of the trading-period fields (F14), Bubble Tea's current version (D27), display terms of the data if published (D1), free-tier numbers of keyed US providers (F7).
+
+## Research backlog
+
+- [x] Market data sources for a personal stock TUI: free and cheap quote APIs (B3 and US), freshness, rate limits, terms of use → `market-data-sources-2026-11.md` (2026-11-23)
+- [x] Existing terminal stock monitors (competitors and substitutes): features, data sources, stack, gaps → `existing-stock-tuis-2026-11.md` (2026-11-23)
+- [ ] Go TUI library: confirm current version and maintenance of the library chosen in Q27 (small lookup)
+- [ ] Legal frame: redistribution and display terms of market data, relevant because the tool may be open-sourced (D1); partly covered by F4
+- [ ] Confirm Finnhub and Financial Modeling Prep free-tier numbers (US is in scope, D2; needed only if a keyed US provider is wanted)
+- [x] How to know market hours for B3 and US without a paid source → F14 (2026-11-23)
+- [ ] Check that the trading-period fields behave correctly on a market holiday (F14); next B3 or US holiday
+- [x] Measure the delay of Yahoo's endpoint for US tickers during US market hours → F15 (2026-11-23)
+- [x] Market size: skipped, this is a personal tool (D1)
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| *TUI* | Text user interface: a full-screen app in the terminal |
+| *B3* | Brasil, Bolsa, Balcão: the Brazilian stock exchange |
+| *the-2026-dev-env* | The user's public repo of machine setup and config files, linked into `~/.config` by its `devenv-setup` script |
+| *Watchlist* | A list of tickers the user follows, without holding data |
