@@ -1,11 +1,11 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: approved, 2026-11-23, with three items open (section 7): Q62, the spec update for D60 and D62, and the untested protocol of D54.
-Sources: `research/grilling-log.md` (decisions D1–D63), `docs/spec.md`, design run in `research/design/`.
+Status: approved, 2026-11-23, with two items open (section 7): Q62 and the untested protocol of D54.
+Sources: `research/grilling-log.md` (decisions D1–D63, facts F1–F30), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
-Two things are still open and are marked where they apply: the spec has not yet been updated for D60 and D62, and the rules for close, open and holidays wait on research (Q62).
+One thing is still open and is marked where it applies: the rules for close, open and holidays wait on research (Q62). The spec was updated for D60 and D62 on 2026-11-23.
 
 ## 1. Summary
 
@@ -156,12 +156,12 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 
 - **Chosen:** if the claim cannot be written, `print` does not fetch; it prints what it could read and warns on the error stream. The view fetches and keeps its claims in memory.
 - **Serves:** QR4, QR5.
-- **Consequence:** the spec's S15.5 applies to the view only (pending spec update).
+- **Consequence:** the spec's S15.5 applies to the view only; S15.9 covers `print`.
 
 ### Forced refresh (D62)
 
 - **Chosen:** `r` and `--refresh` start a cycle at once; rows are requested 8 at a time until the round's deadline. Rows the deadline cut off were never requested, keep no failure, and are due at the next heartbeat.
-- **Consequence:** the spec's S7.1, S7.2 and 6.3 are reworded (pending spec update).
+- **Consequence:** the spec's S7.1, S7.2 and 6.3 say "starts within 2 seconds"; S7.9 says every row follows within one interval.
 
 ## 5. Failure behaviour
 
@@ -190,12 +190,12 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 | Item | What would show it is wrong | What changes if it is |
 |---|---|---|
 | **Close, open and holidays (Q62, open).** The provisional rule: refresh for a settle window after the close (30 minutes for B3, 5 for the others); check again at the predicted next open, and every 5 minutes for 30 minutes if the answer still carries the old session. It rests on F14 and costs up to 7 requests per row on a holiday, where spec 6.1 says none | The holiday check on 2026-11-26; a measurement of when B3's closing quote arrives; a day with a late opening (F26) | Rule 7 of `Plan`, `MarketState`, and possibly the spec's 6.1 |
+| **The settle window is too short for B3 (F30).** On 2026-11-23 the quote time of a B3 ticker was 65 minutes past the session end the source reports | A watch of one B3 ticker from 19:30 to 21:45 UTC on a trading day | The settle window in rule 7 and the 30 minutes of D50 (P31), through Q62 |
 | The claim-and-commit protocol of D54 was not attacked as a whole | A test with two processes and a stand-in source that counts requests; a process killed between claim and commit | `engine.Cycle` |
-| Only 401, 403 and 429 count as a refusal | A refusal that arrives as 200 with an error body, or as 404 (backlog) | `provider/yahoo`, and the count under QR5 |
+| Only 401, 403 and 429 count as a refusal. A 404 with a JSON "Not Found" error is an unknown ticker (F27) | A refusal that arrives as 200 with an error body, or as a 404 without that body (backlog) | `provider/yahoo`, and the count under QR5 |
 | The numbers of C16 | QR11 and S13.9 measured against a slow stand-in | Constants in `engine` |
 | A config edit that keeps size, inode and modification time is not seen; one that keeps an older modification time is reloaded but does not retry not-found rows | A test that replaces the file with `cp -p` | The stamp, or C8's rule |
 | The Lip Gloss and TOML versions are not checked | The first build | Section 6 |
-| The spec still has the old wording for D60 and D62 | Reading S7.1, S7.2, S15.5, 6.3 | The spec, through `log-to-spec` |
 
 ## 8. Not designed
 

@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D52, facts F1–F22).
+Status: approved, 2026-11-23 (D52); updated the same day for D59, D60 and D62, which came out of the design run. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D63, facts F1–F30).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -42,6 +42,7 @@ This spec says what the product does, not how it is built. It names no language,
 - Forking or adopting an existing tool (D21).
 - Pre-market and after-hours prices (D50).
 - A second data source in the first version (D50).
+- Windows. The tool supports Linux and macOS (D59).
 
 ## 3. Glossary
 
@@ -196,7 +197,7 @@ At start, a row whose quote is in the cache begins as Fresh or Stale by the same
 |---|---|---|---|---|
 | Normal | The source refuses a request (rate limit or access denied) | Blocked | No more fetches; rows keep their prices; the rows whose fetch was refused are stale; the error line says so; a first wait of 5 minutes starts | D19, D38, D50 |
 | Normal | A fetch fails for any other reason | Normal | Only the rows that failed are affected (6.2) | D19, D50 |
-| Normal | `r` is pressed | Normal | Every row is fetched within 2 seconds, including rows waiting after a network error and rows of closed markets; not-found rows keep their hourly wait | D32, D38, D39, D50 |
+| Normal | `r` is pressed | Normal | A refresh of every row starts within 2 seconds, including rows waiting after a network error and rows of closed markets; not-found rows keep their hourly wait | D32, D38, D39, D50, D62 |
 | Blocked | `r` is pressed, or a one-shot call asks for a forced fetch | Blocked | Nothing is fetched; the status line says when the next attempt is | D38, D50 |
 | Blocked | The wait ends and the source answers | Normal | Refresh resumes; the error line goes | D19, D50 |
 | Blocked | The wait ends and the source refuses again | Blocked | The wait doubles, up to 30 minutes | D19, D50 |
@@ -226,11 +227,13 @@ A one-shot call decides per row, in this order:
 | A forced fetch was asked for | Fetches, unless the row was attempted less than 5 seconds ago | D23, D50 |
 | The row's last fetch failed and its wait has not ended | No fetch; prints the cached quote, marked stale | D19, D50 |
 | No quote in the cache | Fetches | D50 |
-| Market closed | No fetch; prints the cached last close | D15 |
+| Market closed, and the period after the close (6.1) is over | No fetch; prints the cached last close | D15, D50 |
 | Market open, last successful fetch at most one refresh interval old | No fetch; prints from the cache | D23, D50 |
 | Market open, last successful fetch older than that | Fetches; if the fetch fails, prints the cached quote marked stale | D19, D23 |
 
 Waits and blocks are shared: they hold for the view and for every one-shot call alike (D50).
+
+When the cache folder cannot be written, a one-shot call fetches nothing at all: it prints what the cache holds, or the `error` state, and warns (D60).
 
 ## 7. Behaviour seen from outside
 
@@ -407,7 +410,7 @@ One JSON document on standard output (D18). Shape (D43):
 
 - The cache lives in `~/.cache/brl-stocks/` (D29), or in `$XDG_CACHE_HOME/brl-stocks/` when that variable is set (D50). It holds the last quotes only (D20).
 - A cache that cannot be read is treated as absent, without a message (D48).
-- When the cache folder cannot be written, the tool still runs and says so once in a warning (D50).
+- When the cache folder cannot be written, the tool still runs and says so once in a warning (D50). The view goes on fetching; a one-shot call does not fetch, because nothing could pace it between calls (D60).
 - With no config file, the tool shows a built-in example watchlist (`PETR4`, `VALE3`, `ITUB4`, `AAPL`, `MSFT`, with the default summary line) and names the path where a config belongs: in the status line of the view, on the error stream in one-shot (D35, D50).
 
 ## 8. Stories
@@ -494,14 +497,15 @@ As the user, I want old prices kept and clearly marked when the source fails, so
 
 As the user, I want to force a refresh when it can help and be told when it cannot, so that I do not make a block worse. (D32, D38)
 
-- **S7.1** Given B3 is open and the source answers, when `r` is pressed, then every B3 row is requested within 2 seconds, without waiting for the interval. (D32, D50)
-- **S7.2** Given a network error has put the next automatic attempt four minutes away, when `r` is pressed, then the failed rows are requested within 2 seconds. (D38, D50)
+- **S7.1** Given B3 is open and the source answers, when `r` is pressed, then the first B3 rows are requested within 2 seconds, without waiting for the interval. (D32, D62)
+- **S7.2** Given a network error has put the next automatic attempt four minutes away, when `r` is pressed, then the first failed rows are requested within 2 seconds. (D38, D62)
 - **S7.3** Given the source is rate-limiting or refusing the tool, when `r` is pressed, then no request is sent. (D38)
 - **S7.4** Given the source is rate-limiting or refusing the tool, when `r` is pressed, then the status line shows the time of the next attempt. (D38)
 - **S7.5** Given the source refuses a request, when the view stays open and the source keeps refusing, then the next attempts come 5, 10, 20 and then every 30 minutes apart. (D50)
 - **S7.6** Given a closed market, when `r` is pressed, then its rows are requested too. (D50)
 - **S7.7** Given `r` was pressed two seconds ago, when `r` is pressed again, then no row is requested a second time. (D50)
 - **S7.8** Given a not-found row tried ten minutes ago and an unchanged config, when `r` is pressed, then that ticker is not requested. (D39)
+- **S7.9** Given B3 is open, 20 B3 rows and a source that answers within one second, when `r` is pressed, then every B3 row is requested before one refresh interval has passed. (D32, D62)
 
 ### S8 — A ticker the source does not know
 
@@ -578,7 +582,7 @@ As a script or the user at a prompt, I want the watchlist printed once, so that 
 - **S13.2** Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run with the default interval, then no request is sent to the source. (D23)
 - **S13.3** Given an open market and a cache whose quotes were fetched 5 minutes ago, when `brl-stocks print` is run, then the quotes are requested from the source before printing. (D23)
 - **S13.4** Given an open market and a cache fetched 20 seconds ago, when `brl-stocks print --refresh` is run, then the quotes are requested from the source. (D23, D41)
-- **S13.5** Given a closed market with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15)
+- **S13.5** Given a market closed for more than 30 minutes, with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15, D50)
 - **S13.6** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then the cached quotes are printed, marked stale with their age. (D19)
 - **S13.7** Given the output is piped to another program, when `brl-stocks print` is run, then the output contains no colour codes. (D25)
 - **S13.8** Given a config with groups, when `brl-stocks print` is run, then each group's name is on a line of its own above its rows. (D16, D50)
@@ -615,10 +619,11 @@ As the user, I want the last quotes kept between runs, so that the view starts w
 - **S15.2** Given the tool has fetched quotes, when the files it keeps are listed, then they are under `~/.cache/brl-stocks/`. (D29)
 - **S15.3** Given the view has run for eight hours of open market, when the cache folder is measured, then its size is within 10% of its size after the first full refresh. (D20, D50)
 - **S15.4** Given a cache file emptied or filled with garbage, when the tool starts, then it shows the watchlist as it does with no cache. (D48)
-- **S15.5** Given a cache folder that cannot be written, when the tool runs, then it shows quotes. (D50)
+- **S15.5** Given a cache folder that cannot be written, when the view runs, then it shows quotes. (D50, D60)
 - **S15.6** Given a ticker was removed from the config, a refresh then succeeded, and the ticker is added back with no network, when the view is drawn, then the row shows no data. (D50)
 - **S15.7** Given a cache file emptied or filled with garbage, when the tool starts, then no message about the cache is shown. (D48)
 - **S15.8** Given a cache folder that cannot be written, when the tool runs, then one warning says the quotes will not be kept. (D50)
+- **S15.9** Given a cache folder that cannot be written, when `brl-stocks print` is run, then no request is sent to the source. (D60)
 
 ### S16 — Colour
 
@@ -663,7 +668,7 @@ Not requirements of this spec. Input for the design phase.
 | Decision | Source |
 |---|---|
 | Written in Go | D22 |
-| Bubble Tea with Lip Gloss draws the full-screen view; version 1 or 2 is open | D27, F18 |
+| Bubble Tea with Lip Gloss draws the full-screen view; version 2 | D27, D58, F18 |
 | The config is parsed as TOML with one small dependency | D28 |
 | Yahoo's unofficial chart endpoint is the default source, behind a provider interface | D7, F2, F13 |
 | The fetching and formatting core is separate from the full-screen interface | D6 |
@@ -671,30 +676,20 @@ Not requirements of this spec. Input for the design phase.
 | The tool must work through a symlinked config folder and never replace the link | D29, F16 |
 | Providers that need a key are bring-your-own-key; no secrets in the repository | D1 |
 | Installed with `go install` from the repository, Go managed by mise | D36 |
-| Open or closed can be read from the trading period in the source's answer; holidays unverified | F14 |
-| Three designs converged on twelve points (C1–C12), not yet confirmed by the user (Q38) | F19 |
-| A cache lock built on `flock` cannot be cancelled and is Unix-only | F21 |
+| The converged design points C1–C17 | D53 |
+| Cache coordination: a short lock around each write, per-row claims, the fetch outside the lock | D54 |
+| A provider call takes one ticker; the tool stops the parallel requests on a refusal | D55 |
+| The block record is kept in a file of its own | D56 |
+| No step layer between the UI library and the logic | D57 |
+| The design is in `docs/design.md` | D63 |
 
 ### Questions: technical choices the behaviour forces
 
+Answered by the design run; see `docs/design.md`. One remains:
+
 | Question | Must serve |
 |---|---|
-| Q38 — Are the converged design points C1–C12 accepted? | All stories |
-| Q39 — How do the view and one-shot calls coordinate on the cache (lock, or rename with an attempt stamp)? | S13, S15, QR4, QR8 |
-| Q40 — Does a provider call take one ticker or a batch? | S5, S6, S17, QR4 |
-| Q41 — How are a block and the waits after failures remembered, and shared between processes? | S7, S13.10, S13.16, QR5 |
-| Q42 — Is there a step layer between the UI library and the logic? | Testability of S1–S12 |
-| Which major version of the UI library (waits on Q42)? | S1, S9, QR11 |
-| Is memory merged with disk on each cycle, and is the cache pruned (X5, waits on Q39)? | S15.3, S15.6, QR8 |
-| What is the format of the cache, and is it something users may rely on? | S15, QR8 |
-| Which operating systems are supported (waits on Q39)? | All stories; see section 12 |
-| How is a config change noticed through a symbolic link within 5 seconds? | S11.3–S11.6 |
-| How are open, closed and holidays decided, and what happens if F14 fails on holidays? | S5.3–S5.9 |
-| How is the closing quote recognised after the close? | S5.8 |
-| How is the replaceable source bounded, so that a second source needs no change in the callers, and how does a test put a stand-in source in place? | S17.2, QR3–QR6, every criterion that counts requests |
-| How does a refresh stop sending requests once the source refuses? | QR5 |
-| Are source-specific settings (such as how the tool identifies itself to the source) exposed to the user? | S17, section 5 |
-| How do tests control time (interval, waits, market sessions)? | S5, S6, S7, S8 |
+| Q62 — How are open, closed and holidays decided, how is the end of the period after the close recognised, and how many checks may a closed or holiday market cost? Waits on research (F14, F26, the closing-quote measurement) | 6.1, S5.3–S5.9, S13.5 |
 
 ## 11. Proposals
 
@@ -754,12 +749,11 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | Item | Affects | Blocks the design or the build? |
 |---|---|---|
 | Whether the trading period in the source's answer is right on a market holiday (F14, backlog; next check on US Thanksgiving, 2026-11-26) | 6.1, S5.9 | Design: no, but it needs a fallback. Build: S5.9 cannot pass until it is known |
-| Which operating systems are supported (log: held, waits on Q39) | All stories | Design: yes |
-| Design questions Q38–Q42 (log: on hold) | Section 10 | Design: yes |
-| Which answers the default source gives when it rate-limits or refuses (F3 names one; backlog) | D50, 6.3 | Design: yes, for the source part |
-| When B3's closing quote arrives after the close (backlog) | D50, S5.8 | No; it sets a number |
-| What hours the default source reports for USD/BRL (backlog) | D50, 6.1 | No |
-| Whether the default source's last price can include pre-market or after-hours trades (backlog) | D50, S5.11 | No |
+| Q62: how open, closed and holidays are decided, and what a closed or holiday market may cost in requests (log: waits on research) | 6.1, S5.3–S5.9; 6.1 says a holiday costs none | Build: yes, for the market-hours part only |
+| Which answers the default source gives when it rate-limits or refuses (F3 names one; an unknown ticker is told apart, F27; backlog) | D50, 6.3 | Build: yes, for the source part |
+| When B3's closing quote arrives after the close (backlog). A first sample shows it later than 30 minutes (F30) | D50, 6.1, S5.3, S5.8, S13.5 | Build: yes, for the market-hours part; the 30 minutes will be revisited in Q62 |
+| What the default source reports for USD/BRL at weekends; on a weekday it reports the whole day as its session (F29) | D50, 6.1 | No |
+| Whether the default source's price can include pre-market trades; after-hours trades do not move it (F28, one sample) | D50, S5.11 | No |
 | Legal frame for showing and redistributing market data (backlog) | Publishing (D1, D24) | No; blocks publishing only |
 | Free-tier numbers of other US sources (F7, backlog) | A future second source | No |
 | B3 support in the closest existing tool was never tested (F9) | Nothing in this spec; D21 stands | No |
@@ -802,7 +796,7 @@ Every decision in the log, and where the spec realises it.
 | D29 | 7.1, 7.2, 7.7, S11.1, S11.2, S11.5–S11.7, S15.2, QR7 |
 | D30 | 4 (Ticker), 7.2, S3.1–S3.5 |
 | D31 | 4, 7.3, S9.1–S9.4 |
-| D32 | 2 (non-goals), 6.3, 7.3, S1.3, S7.1, S9.6–S9.9 |
+| D32 | 2 (non-goals), 6.3, 7.3, S1.3, S7.1, S7.9, S9.6–S9.9 |
 | D33 | 4 (Watchlist invariants), 5 |
 | D34 | process (delivery work in another repository); see section 12 |
 | D35 | 2 (non-goals), 6.4, 7.7, S11.8, S12, QR7 |
@@ -823,3 +817,9 @@ Every decision in the log, and where the spec realises it.
 | D50 | The 36 routine proposals P10–P45; each is listed in section 11 with the places that realise it |
 | D51 | 7.3, 7.4 |
 | D52 | process (approval of this spec) |
+| D53–D58 | design, see section 10 and `docs/design.md` |
+| D59 | 2 (non-goals) |
+| D60 | 6.5, 7.7, S15.5, S15.9 |
+| D61 | No change: D50's rule on tickers that left the config stands (S15.6) |
+| D62 | 6.3, S7.1, S7.2, S7.9 |
+| D63 | process (approval of the design document) |
