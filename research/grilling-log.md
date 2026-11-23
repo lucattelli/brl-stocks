@@ -53,6 +53,9 @@ Sources so far:
 | D35 | **With no config file, the tool runs with a small built-in example watchlist** and says where to put a config. It never writes the config file. | Q35, recommendation accepted. Keeps the symlinked folder untouched (D29). | 2026-11-23 |
 | D36 | **Installed by hand for now** (`go install` from the repo, Go managed by mise); added to `devenv-setup` once the tool is stable. | Q36, recommendation accepted. | 2026-11-23 |
 | D37 | **Shared understanding confirmed** for the first version as summarised in D1–D36. The next step is a spec written from this log; no code before that. | Q37, recommendation accepted. | 2026-11-23 |
+| D38 | **`r` cannot override a block.** It fetches at once after a network error; while the source is rate-limiting or blocking it does not fetch, and the status line says when the next attempt is. | Q43, recommendation accepted. For the spec (behaviour). Refines D32 and D19. Rejected: `r` always fetches (hammers a source that is blocking); one probe a minute during a block (extra rule for little gain). Source: `design/synthesis.md` B1. | 2026-11-23 |
+| D39 | **A ticker the source does not know shows "not found" in place of the price.** It is retried once an hour and whenever the config changes; other rows are unaffected. | Q44, recommendation accepted. For the spec (behaviour). Source: `design/synthesis.md` B2, C8. | 2026-11-23 |
+| D40 | **A row is stale when its last fetch failed, or when its market is open and its last successful fetch is older than two refresh intervals.** | Q45, recommendation accepted. For the spec (behaviour). Defines the term used in D19. Rejected: failed fetch only (misses a fetch that never happened); older than one interval (rows flicker during every refresh). Source: `design/synthesis.md` B3. | 2026-11-23 |
 
 ## Facts learned
 
@@ -88,11 +91,6 @@ _Questions waiting on research or on the user, and what they wait on._
 
 Reopened on 2026-11-23 by the design exploration (D37 stands for the behaviour agreed up to Q37).
 
-Behaviour questions from the design run (waiting on the user, asked first so that the spec includes them):
-- Q43 — What `r` does while the source is blocking (B1)
-- Q44 — A ticker the source does not know (B2)
-- Q45 — When a row counts as stale (B3)
-
 Design questions, asked in round 9 and on hold until another model family (Codex, `gpt-6.2-astra`) has attacked the converged design:
 - Q38 — The converged design points (C1–C12)
 - Q39 — Cache coordination between processes (X1)
@@ -106,7 +104,7 @@ Held for a later round:
 - Bubble Tea version 1 or 2 (F18) — waits on Q42
 - Merging memory with disk on each cycle (X5) — waits on Q39
 
-Agreed order (2026-11-23): answer Q43–Q45; generate `docs/spec.md` with the `log-to-spec` skill; resume the design run at its synthesis against that spec; Codex attack; Q38–Q42; `docs/design.md`. The user approved sending the design material to Codex. OpenCode is left out: it has no credentials and offers only free models.
+Agreed order (2026-11-23): Q43–Q45 are answered (D38–D40); next, generate `docs/spec.md` with the `log-to-spec` skill; resume the design run at its synthesis against that spec; Codex attack; Q38–Q42; `docs/design.md`. The user approved sending the design material to Codex. OpenCode is left out: it has no credentials and offers only free models.
 
 ## Research backlog
 
