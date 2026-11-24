@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D72), and updated on 2026-11-24 for D73 and D74, which came out of verifying the built tool. Earlier approvals: D52, D67. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D74, facts F1–F32).
+Status: draft, 2026-11-24. Approved on 2026-11-23 (D72) and updated on 2026-11-24 for D73 and D74; then given surface tags on every criterion, the new story S18 and the criterion S17.4; P53–P55 settled as D75–D77. Waiting on approval. Earlier approvals: D52, D67. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D77, facts F1–F35).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -201,7 +201,7 @@ The wait after failures (D50): after a row's n-th failed fetch in a row, its nex
 | Normal | The source refuses a request (rate limit or access denied) | Blocked | No more fetches; rows keep their prices; the rows whose fetch was refused are stale; the error line says so; a first wait of 5 minutes starts | D19, D38, D50 |
 | Normal | A fetch fails for any other reason | Normal | Only the rows that failed are affected (6.2) | D19, D50 |
 | Normal | `r` is pressed | Normal | A refresh of every row starts within 2 seconds, including rows waiting after a network error and rows of closed markets; not-found rows keep their hourly wait | D32, D38, D39, D50, D62 |
-| Blocked | `r` is pressed, or a one-shot call asks for a forced fetch | Blocked | Nothing is fetched; the status line says when the next attempt is | D38, D50 |
+| Blocked | `r` is pressed, or a one-shot call asks for a forced fetch | Blocked | Nothing is fetched; the status line (view) or the line on the error stream (one-shot) says when the next attempt is | D38, D50, D76 |
 | Blocked | The wait ends and the source answers | Normal | Refresh resumes; the error line goes | D19, D50 |
 | Blocked | The wait ends and the source refuses again | Blocked | The wait doubles, up to 30 minutes | D19, D50 |
 
@@ -244,6 +244,13 @@ When the cache folder cannot be written, a one-shot call fetches nothing at all:
 
 All values in the examples are illustrative.
 
+The product has two surfaces (D6, D18):
+
+- **view**: the full-screen view, opened by `brl-stocks` with no command (7.3).
+- **print**: the one-shot command, `brl-stocks print`, as a table (7.4) or with `--json` (7.5).
+
+Every acceptance criterion in section 8 is tagged with the surfaces it applies to. Flags that print and exit (`--help`, `--version`, an unknown flag) count as the surface of the command they are given with: `brl-stocks --version` is `view`, `brl-stocks print --version` is `print` (D77). The config file, the cache, the source and the rules of section 6 are shared by both.
+
 ### 7.1 Commands and flags
 
 | Command | What it does | Source |
@@ -253,9 +260,9 @@ All values in the examples are illustrative.
 | `brl-stocks print --json` | One-shot: prints a JSON document and exits | D18, D41 |
 | `brl-stocks print --refresh` | One-shot with a forced fetch | D23, D41 |
 | `--config <path>` | On any command: reads the config from this path | D29 |
-| `--help`, `--version` | Print usage or the version and exit with status 0 | D50 |
+| `--help`, `--version` | Print usage or the version and exit with status 0, with or without `print` | D50, D77 |
 
-An unknown command or flag prints a usage message to the error stream and exits with status 2 (D50).
+An unknown command or flag prints a usage message to the error stream and exits with status 2, with or without `print` (D50, D77).
 
 For testing only: when the environment variable `BRL_STOCKS_SOURCE_URL` is set, the default source is reached at that address. It does not appear in the help text and selects no other source (D70).
 
@@ -361,7 +368,7 @@ VALE3   Vale ON              R$ 61,07   +0,00  +0,00%    60,80    61,55  10:14 !
 B3 open · US closed
 ```
 
-The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; numbers are formatted and columns aligned as in the view (D46, D51, D71); stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
+The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; numbers are formatted and columns aligned as in the view (D46, D51, D71); stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). The failure line gives what the view's error line gives: the cause phrase, the number of rows not updated and the time of the next attempt; with several problems, one line, chosen as in the view (D76). A quote time not from today reads `DD/MM`, as in the view (D75). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
 
 ### 7.5 One-shot JSON
 
@@ -425,268 +432,293 @@ One JSON document on standard output (D18). Shape (D43):
 
 "The user" is the person running the tool. "A script" is a program or status bar that calls the one-shot mode.
 
+**Surfaces.** Each criterion carries the surfaces it applies to (section 7), in brackets after its id; a criterion tagged with both holds on each. Many were written in the words of the view. On `print` they read as follows (7.2, 7.4, 6.3, 6.5):
+
+| In the criterion | On `print` |
+|---|---|
+| the view starts, is open, runs or is drawn; the row or the summary line is drawn; quotes are shown | `brl-stocks print` is run, and the table shows the result |
+| at full width | always: the table drops no column (7.4) |
+| until its first quote arrives | when no quote arrives during the call (D50) |
+| the error line; a warning in the status line | a line on the error stream (D19, D50); a warning is a line of its own, so "exactly one error line" counts the lines that give a cause (7.4) |
+| the status line reads (market states) | the last line of the table (D47, D50) |
+| the status line shows the time of the next attempt | the line on the error stream that gives the cause (D76) |
+| `r` is pressed | `brl-stocks print --refresh` is run (D23, D38, D50) |
+| a refresh runs, a refresh succeeds or fails | the fetches of one `brl-stocks print` call |
+
+A row's number formats are those of the table; the JSON carries numbers unformatted (D66).
+
 Criteria that count requests, or that need a source that fails, refuses or does not know a ticker, are run against a stand-in source. How a test puts one in place is a design question (section 10).
 
 ### S1 — Watch the list in a full-screen view
 
 As the user, I want a full-screen view of my watchlist, so that I see the price and day change of what I follow at a glance. (D3, D6, D9)
 
-- **S1.1** Given a config with the tickers `PETR4` and `AAPL` and a source that answers, when `brl-stocks` is run with no command, then a full-screen view shows one row for each ticker. (D3, D6)
-- **S1.2** Given a row whose fetch succeeded, when the view is drawn at full width, then the row shows ticker, name, last price, day change as a value, day change as a percent, day low, day high and quote time. (D9)
-- **S1.3** Given the view is open, when `q` is pressed, then the tool exits with status 0. (D32, D50)
-- **S1.4** Given the cache holds quotes for the watchlist, when the view starts, then the rows show the cached quotes before any answer from the source has arrived. (D20)
-- **S1.5** Given no cache, when the view starts, then each row shows its ticker and `—` in the data columns until its first quote arrives. (D50)
-- **S1.6** Given a terminal too narrow for the full row, when the view is drawn, then ticker, last price, day change percent and quote time are still shown. (D50)
-- **S1.7** Given a quote from an earlier day, when the row is drawn, then the quote time is shown as a date (`DD/MM`). (D50)
-- **S1.8** Given a B3 row whose last price is 1038.42, when the row is drawn, then the price reads `R$ 1.038,42`. (D46)
-- **S1.9** Given a US row whose last price is 1229.87, when the row is drawn, then the price reads `US$ 1,229.87`. (D46)
-- **S1.10** Given a B3 row whose day change is +0.31, when the row is drawn, then the change value reads `+0,31`. (D46, D50, D65)
-- **S1.11** Given a B3 row whose day change is +0.81 percent, when the row is drawn, then the percent reads `+0,81%`. (D50, D64, D65)
-- **S1.12** Given a US row whose day change is -0.48 percent, when the row is drawn, then the percent reads `-0.48%`. (D64, D65, D66)
-- **S1.13** Given a B3 row whose day change is exactly zero, when the row is drawn, then the change value reads `+0,00`. (D50, D66)
-- **S1.14** Given a B3 row whose last price is 38.425, when the row is drawn, then the price reads `R$ 38,43`. (D46, D66)
-- **S1.15** Given a B3 row whose day low is 38.02, when the row is drawn, then the low reads `38,02`, with no currency symbol. (D46, D66)
+- **S1.1** [view] Given a config with the tickers `PETR4` and `AAPL` and a source that answers, when `brl-stocks` is run with no command, then a full-screen view shows one row for each ticker. (D3, D6)
+- **S1.2** [view, print] Given a row whose fetch succeeded, when the view is drawn at full width, then the row shows ticker, name, last price, day change as a value, day change as a percent, day low, day high and quote time. (D9)
+- **S1.3** [view] Given the view is open, when `q` is pressed, then the tool exits with status 0. (D32, D50)
+- **S1.4** [view] Given the cache holds quotes for the watchlist, when the view starts, then the rows show the cached quotes before any answer from the source has arrived. (D20)
+- **S1.5** [view, print] Given no cache, when the view starts, then each row shows its ticker and `—` in the data columns until its first quote arrives. (D50)
+- **S1.6** [view] Given a terminal too narrow for the full row, when the view is drawn, then ticker, last price, day change percent and quote time are still shown. (D50)
+- **S1.7** [view, print] Given a quote from an earlier day, when the row is drawn, then the quote time is shown as a date (`DD/MM`). (D50, D75)
+- **S1.8** [view, print] Given a B3 row whose last price is 1038.42, when the row is drawn, then the price reads `R$ 1.038,42`. (D46)
+- **S1.9** [view, print] Given a US row whose last price is 1229.87, when the row is drawn, then the price reads `US$ 1,229.87`. (D46)
+- **S1.10** [view, print] Given a B3 row whose day change is +0.31, when the row is drawn, then the change value reads `+0,31`. (D46, D50, D65)
+- **S1.11** [view, print] Given a B3 row whose day change is +0.81 percent, when the row is drawn, then the percent reads `+0,81%`. (D50, D64, D65)
+- **S1.12** [view, print] Given a US row whose day change is -0.48 percent, when the row is drawn, then the percent reads `-0.48%`. (D64, D65, D66)
+- **S1.13** [view, print] Given a B3 row whose day change is exactly zero, when the row is drawn, then the change value reads `+0,00`. (D50, D66)
+- **S1.14** [view, print] Given a B3 row whose last price is 38.425, when the row is drawn, then the price reads `R$ 38,43`. (D46, D66)
+- **S1.15** [view, print] Given a B3 row whose day low is 38.02, when the row is drawn, then the low reads `38,02`, with no currency symbol. (D46, D66)
 
 ### S2 — Summary line
 
 As the user, I want the Ibovespa, the S&P 500 and USD/BRL always in sight, so that I can read my tickers against the market. (D11)
 
-- **S2.1** Given a config without a `summary` key, when the view is drawn, then a line above the watchlist shows Ibovespa, S&P 500 and USD/BRL, each with its value and day change percent. (D11, D50)
-- **S2.2** Given `summary = ["USDBRL"]`, when the view is drawn, then the summary line shows only USD/BRL. (D11, D42)
-- **S2.3** Given `summary = []`, when the view is drawn, then there is no summary line. (D42)
-- **S2.4** Given more rows than fit the screen, when the user scrolls, then the summary line stays in place. (D11)
-- **S2.5** Given an Ibovespa value of 158432.10, when the summary line is drawn, then the Ibovespa value reads `158.432`. (D51, D65)
-- **S2.6** Given an S&P 500 value of 6812.4, when the summary line is drawn, then the S&P 500 value reads `6,812.40`. (D51, D65)
-- **S2.7** Given a USD/BRL rate of 5.4321, when the summary line is drawn, then the USD/BRL value reads `5,4321`. (D50, D51)
-- **S2.8** Given an Ibovespa day change of +0.32 percent, when the summary line is drawn, then its percent reads `+0,32%`. (D50, D51, D65)
+- **S2.1** [view, print] Given a config without a `summary` key, when the view is drawn, then a line above the watchlist shows Ibovespa, S&P 500 and USD/BRL, each with its value and day change percent. (D11, D50)
+- **S2.2** [view, print] Given `summary = ["USDBRL"]`, when the view is drawn, then the summary line shows only USD/BRL. (D11, D42)
+- **S2.3** [view, print] Given `summary = []`, when the view is drawn, then there is no summary line. (D42)
+- **S2.4** [view] Given more rows than fit the screen, when the user scrolls, then the summary line stays in place. (D11)
+- **S2.5** [view, print] Given an Ibovespa value of 158432.10, when the summary line is drawn, then the Ibovespa value reads `158.432`. (D51, D65)
+- **S2.6** [view, print] Given an S&P 500 value of 6812.4, when the summary line is drawn, then the S&P 500 value reads `6,812.40`. (D51, D65)
+- **S2.7** [view, print] Given a USD/BRL rate of 5.4321, when the summary line is drawn, then the USD/BRL value reads `5,4321`. (D50, D51)
+- **S2.8** [view, print] Given an Ibovespa day change of +0.32 percent, when the summary line is drawn, then its percent reads `+0,32%`. (D50, D51, D65)
 
 ### S3 — Two markets, plain tickers, own currency
 
 As the user, I want to write tickers the way I know them and see each price in its own currency, so that my list does not depend on a data source. (D2, D10, D17, D30)
 
-- **S3.1** Given the ticker `PETR4` in the config, when its quote is shown, then it is the B3 instrument, priced in `R$`. (D30, D10)
-- **S3.2** Given the tickers `PETR4F`, `MXRF11` and `AAPL34`, when the config is loaded, then all three are treated as B3. (D30)
-- **S3.3** Given the tickers `AAPL`, `MSFT` and `F`, when the config is loaded, then all three are treated as US, priced in `US$`. (D30, D10)
-- **S3.4** Given the ticker `US:ABCD1`, when the config is loaded, then it is treated as US although its shape is that of B3. (D30)
-- **S3.5** Given the ticker `B3:XYZ`, when the config is loaded, then it is treated as B3 although its shape is not that of B3. (D30)
-- **S3.6** Given a B3 row and a US row on screen, when quotes are shown, then no price has been converted to the other currency. (D10)
-- **S3.7** Given the ticker written as `petr4`, when the row is drawn, then it shows `PETR4`. (D50)
+- **S3.1** [view, print] Given the ticker `PETR4` in the config, when its quote is shown, then it is the B3 instrument, priced in `R$`. (D30, D10)
+- **S3.2** [view, print] Given the tickers `PETR4F`, `MXRF11` and `AAPL34`, when the config is loaded, then all three are treated as B3. (D30)
+- **S3.3** [view, print] Given the tickers `AAPL`, `MSFT` and `F`, when the config is loaded, then all three are treated as US, priced in `US$`. (D30, D10)
+- **S3.4** [view, print] Given the ticker `US:ABCD1`, when the config is loaded, then it is treated as US although its shape is that of B3. (D30)
+- **S3.5** [view, print] Given the ticker `B3:XYZ`, when the config is loaded, then it is treated as B3 although its shape is not that of B3. (D30)
+- **S3.6** [view, print] Given a B3 row and a US row on screen, when quotes are shown, then no price has been converted to the other currency. (D10)
+- **S3.7** [view, print] Given the ticker written as `petr4`, when the row is drawn, then it shows `PETR4`. (D50)
 
 ### S4 — Groups
 
 As the user, I want to split the watchlist into named groups, so that related tickers sit together. (D16)
 
-- **S4.1** Given a config with the groups "Brasil" and "US" in that order, when the view is drawn, then each name appears as a header above its rows, in that order. (D16)
-- **S4.2** Given a config with no group, when the view is drawn, then no group header appears. (D16)
-- **S4.3** Given tickers outside groups and a group, when the view is drawn, then the tickers outside groups come first, with no header. (D42)
-- **S4.4** Given the same ticker in two groups, when a refresh runs, then the ticker is requested from the source once. (D50)
+- **S4.1** [view, print] Given a config with the groups "Brasil" and "US" in that order, when the view is drawn, then each name appears as a header above its rows, in that order. (D16, D50)
+- **S4.2** [view, print] Given a config with no group, when the view is drawn, then no group header appears. (D16, D50)
+- **S4.3** [view, print] Given tickers outside groups and a group, when the view is drawn, then the tickers outside groups come first, with no header. (D42, D50)
+- **S4.4** [view, print] Given the same ticker in two groups, when a refresh runs, then the ticker is requested from the source once. (D50)
 
 ### S5 — Automatic refresh, and markets that are closed
 
 As the user, I want quotes refreshed by themselves while a market is open and left alone when it is closed, so that the screen is current without wasting requests. (D14, D15)
 
-- **S5.1** Given B3 is open and no `refresh_seconds` is set, when the view stays open for 10 minutes, then each B3 row is requested from the source between 9 and 11 times. (D14, D50)
-- **S5.2** Given `refresh_seconds = 120` and an open market, when the view stays open for 10 minutes, then each row of that market is requested between 4 and 6 times. (D14, D42, D50)
-- **S5.3** Given the US market has been closed for more than 30 minutes and every US row has a quote, when the view stays open for 10 minutes, then no US row is requested. (D15, D50)
-- **S5.4** Given the US market is closed, when the view is drawn, then US rows show the last close. (D15)
-- **S5.5** Given the US market is closed and B3 is open, when the view is drawn, then the status line reads `B3 open · US closed`. (D15, D47)
-- **S5.6** Given a closed market whose rows were last fetched, with success, two days ago, when the view is drawn, then those rows carry no stale mark. (D40)
-- **S5.7** Given a closed market and an open view, when the market's next session starts, then its rows are requested within one refresh interval without a key press. (D14, D15, D50)
-- **S5.8** Given B3 closed less than 30 minutes ago and a B3 row whose quote time is before the close, when a refresh interval passes, then that row is requested again. (D50)
-- **S5.9** Given a weekday that is a holiday for a market, when the view is open during that market's usual hours, then the market is shown as closed. (D15; rests on F14, unverified, see section 12)
-- **S5.10** Given `refresh_seconds = 3`, when the view runs, then rows are requested no more often than every 10 seconds. (D50)
-- **S5.11** Given the US market before its regular session, when the view is drawn, then US rows show the last regular close, not a pre-market price. (D50)
-- **S5.12** Given a row whose last fetch failed before its market closed, when the view is drawn after the close, then the row is still marked stale. (D40)
+- **S5.1** [view] Given B3 is open and no `refresh_seconds` is set, when the view stays open for 10 minutes, then each B3 row is requested from the source between 9 and 11 times. (D14, D50)
+- **S5.2** [view] Given `refresh_seconds = 120` and an open market, when the view stays open for 10 minutes, then each row of that market is requested between 4 and 6 times. (D14, D42, D50)
+- **S5.3** [view] Given the US market has been closed for more than 30 minutes and every US row has a quote, when the view stays open for 10 minutes, then no US row is requested. (D15, D50)
+- **S5.4** [view, print] Given the US market is closed, when the view is drawn, then US rows show the last close. (D15)
+- **S5.5** [view, print] Given the US market is closed and B3 is open, when the view is drawn, then the status line reads `B3 open · US closed`. (D15, D47)
+- **S5.6** [view, print] Given a closed market whose rows were last fetched, with success, two days ago, when the view is drawn, then those rows carry no stale mark. (D40)
+- **S5.7** [view] Given a closed market and an open view, when the market's next session starts, then its rows are requested within one refresh interval without a key press. (D14, D15, D50)
+- **S5.8** [view] Given B3 closed less than 30 minutes ago and a B3 row whose quote time is before the close, when a refresh interval passes, then that row is requested again. (D50)
+- **S5.9** [view, print] Given a weekday that is a holiday for a market, when the view is open during that market's usual hours, then the market is shown as closed. (D15; rests on F14, unverified, see section 12)
+- **S5.10** [view, print] Given `refresh_seconds = 3`, when the view runs, then rows are requested no more often than every 10 seconds. (D50)
+- **S5.11** [view, print] Given the US market before its regular session, when the view is drawn, then US rows show the last regular close, not a pre-market price. (D50)
+- **S5.12** [view, print] Given a row whose last fetch failed before its market closed, when the view is drawn after the close, then the row is still marked stale. (D40)
 
 ### S6 — When a refresh fails
 
 As the user, I want old prices kept and clearly marked when the source fails, so that I never take an old price for a current one. (D19, D40)
 
-- **S6.1** Given rows with quotes and an open market, when a refresh fails, then the rows still show their last known prices. (D19)
-- **S6.2** Given a row whose last fetch failed, when the view is drawn, then the row is marked stale with its age. (D19, D40)
-- **S6.3** Given a refresh in which five rows failed, when the view is drawn, then exactly one error line is shown. (D19)
-- **S6.4** Given a row that keeps failing with the default interval, when the view stays open, then the automatic attempts for it come 60, 120, 240, 480, 960 and then every 1,800 seconds apart. (D19, D50)
-- **S6.5** Given stale rows and an error line, when a refresh succeeds for every row, then the stale marks are gone. (D19, D40)
-- **S6.6** Given stale rows and an error line, when a refresh succeeds for every row, then the error line is gone. (D19)
-- **S6.7** Given an open market and a row whose last successful fetch is older than two refresh intervals with no failed fetch since (the machine just woke from sleep), when the view is drawn, then the row is marked stale. (D40)
-- **S6.8** Given a refresh in which one row fails and the others succeed, when the view is drawn, then only that row is marked stale. (D40)
-- **S6.9** Given a failed refresh, when the error line is drawn, then it names the cause, the number of rows not updated and the time of the next attempt. (D50)
-- **S6.10** Given a stale row whose last successful fetch was 12 minutes ago, when the row is drawn, then the mark reads `!12m`. (D50)
+- **S6.1** [view, print] Given rows with quotes and an open market, when a refresh fails, then the rows still show their last known prices. (D19)
+- **S6.2** [view, print] Given a row whose last fetch failed, when the view is drawn, then the row is marked stale with its age. (D19, D40)
+- **S6.3** [view, print] Given a refresh in which five rows failed, when the view is drawn, then exactly one error line is shown. (D19)
+- **S6.4** [view] Given a row that keeps failing with the default interval, when the view stays open, then the automatic attempts for it come 60, 120, 240, 480, 960 and then every 1,800 seconds apart. (D19, D50)
+- **S6.5** [view, print] Given stale rows and an error line, when a refresh succeeds for every row, then the stale marks are gone. (D19, D40)
+- **S6.6** [view, print] Given stale rows and an error line, when a refresh succeeds for every row, then the error line is gone. (D19)
+- **S6.7** [view] Given an open market and a row whose last successful fetch is older than two refresh intervals with no failed fetch since (the machine just woke from sleep), when the view is drawn, then the row is marked stale. (D40)
+- **S6.8** [view, print] Given a refresh in which one row fails and the others succeed, when the view is drawn, then only that row is marked stale. (D40)
+- **S6.9** [view, print] Given a failed refresh, when the error line is drawn, then it names the cause, the number of rows not updated and the time of the next attempt. (D50, D76)
+- **S6.10** [view, print] Given a stale row whose last successful fetch was 12 minutes ago, when the row is drawn, then the mark reads `!12m`. (D50)
 
 ### S7 — Refresh now, and a source that is blocking
 
 As the user, I want to force a refresh when it can help and be told when it cannot, so that I do not make a block worse. (D32, D38)
 
-- **S7.1** Given B3 is open and the source answers, when `r` is pressed, then the first B3 rows are requested within 2 seconds, without waiting for the interval. (D32, D62)
-- **S7.2** Given a network error has put the next automatic attempt four minutes away, when `r` is pressed, then the first failed rows are requested within 2 seconds. (D38, D62)
-- **S7.3** Given the source is rate-limiting or refusing the tool, when `r` is pressed, then no request is sent. (D38)
-- **S7.4** Given the source is rate-limiting or refusing the tool, when `r` is pressed, then the status line shows the time of the next attempt. (D38)
-- **S7.5** Given the source refuses a request, when the view stays open and the source keeps refusing, then the next attempts come 5, 10, 20 and then every 30 minutes apart. (D50)
-- **S7.6** Given a closed market, when `r` is pressed, then its rows are requested too. (D50)
-- **S7.7** Given `r` was pressed two seconds ago, when `r` is pressed again, then no row is requested a second time. (D50)
-- **S7.8** Given a not-found row tried ten minutes ago and an unchanged config, when `r` is pressed, then that ticker is not requested. (D39)
-- **S7.9** Given B3 is open, 20 B3 rows and a source that answers within one second, when `r` is pressed, then every B3 row is requested before one refresh interval has passed. (D32, D62)
+- **S7.1** [view, print] Given B3 is open and the source answers, when `r` is pressed, then the first B3 rows are requested within 2 seconds, without waiting for the interval. (D32, D62)
+- **S7.2** [view, print] Given a network error has put the next automatic attempt four minutes away, when `r` is pressed, then the first failed rows are requested within 2 seconds. (D38, D62)
+- **S7.3** [view, print] Given the source is rate-limiting or refusing the tool, when `r` is pressed, then no request is sent. (D38)
+- **S7.4** [view, print] Given the source is rate-limiting or refusing the tool, when `r` is pressed, then the status line shows the time of the next attempt. (D38, D76)
+- **S7.5** [view] Given the source refuses a request, when the view stays open and the source keeps refusing, then the next attempts come 5, 10, 20 and then every 30 minutes apart. (D50)
+- **S7.6** [view, print] Given a closed market, when `r` is pressed, then its rows are requested too. (D50)
+- **S7.7** [view, print] Given `r` was pressed two seconds ago, when `r` is pressed again, then no row is requested a second time. (D50)
+- **S7.8** [view, print] Given a not-found row tried ten minutes ago and an unchanged config, when `r` is pressed, then that ticker is not requested. (D39)
+- **S7.9** [view] Given B3 is open, 20 B3 rows and a source that answers within one second, when `r` is pressed, then every B3 row is requested before one refresh interval has passed. (D32, D62)
 
 ### S8 — A ticker the source does not know
 
 As the user, I want a mistyped ticker to say so in its own row, so that one error does not hide the rest of the list. (D39)
 
-- **S8.1** Given the ticker `XXXX9`, which the source does not know, when the view is drawn, then its row shows "not found" in place of the price. (D39)
-- **S8.2** Given one not-found row among others, when a refresh runs, then the other rows show fresh quotes. (D39)
-- **S8.3** Given a not-found row and an unchanged config, when the view stays open for three hours, then the ticker is requested at least twice and at most four times. (D39)
-- **S8.4** Given a not-found row, when the config file changes, then the ticker is requested again without waiting for the hour. (D39)
-- **S8.5** Given a not-found row and no other problem, when the view is drawn, then there is no error line. (D50)
+- **S8.1** [view, print] Given the ticker `XXXX9`, which the source does not know, when the view is drawn, then its row shows "not found" in place of the price. (D39)
+- **S8.2** [view, print] Given one not-found row among others, when a refresh runs, then the other rows show fresh quotes. (D39)
+- **S8.3** [view] Given a not-found row and an unchanged config, when the view stays open for three hours, then the ticker is requested at least twice and at most four times. (D39)
+- **S8.4** [view, print] Given a not-found row, when the config file changes, then the ticker is requested again without waiting for the hour. (D39)
+- **S8.5** [view, print] Given a not-found row and no other problem, when the view is drawn, then there is no error line. (D50)
 
 ### S9 — Sort, scroll and help
 
 As the user, I want to reorder and scroll the list with a few keys, so that I find what moved most. (D31, D32)
 
-- **S9.1** Given the view has just started, when it is drawn, then rows are in the order of the config file. (D31)
-- **S9.2** Given file order, when `s` is pressed once, then rows are ordered by day change. (D31)
-- **S9.3** Given the order by day change, when `s` is pressed once, then rows are ordered by ticker. (D31)
-- **S9.4** Given the order by ticker, when `s` is pressed once, then rows are back in file order. (D31, D50)
-- **S9.5** Given two groups and the order by day change, when the view is drawn, then each group's rows run from the highest percent to the lowest. (D50)
-- **S9.6** Given more rows than fit the screen, when the down arrow or `j` is pressed, then the list scrolls down by one row. (D32)
-- **S9.7** Given more rows than fit the screen and a scrolled list, when the up arrow or `k` is pressed, then the list scrolls up by one row. (D32)
-- **S9.8** Given the view is open, when `?` is pressed, then the keys `q`, `r`, `s`, the scroll keys and `?` are listed with their actions. (D32)
-- **S9.9** Given the view is open, when a key outside that list is pressed, then nothing changes. (D32)
-- **S9.10** Given two groups and the order by day change, when the view is drawn, then the groups are still in file order. (D50)
+- **S9.1** [view, print] Given the view has just started, when it is drawn, then rows are in the order of the config file. (D31, D42)
+- **S9.2** [view] Given file order, when `s` is pressed once, then rows are ordered by day change. (D31)
+- **S9.3** [view] Given the order by day change, when `s` is pressed once, then rows are ordered by ticker. (D31)
+- **S9.4** [view] Given the order by ticker, when `s` is pressed once, then rows are back in file order. (D31, D50)
+- **S9.5** [view] Given two groups and the order by day change, when the view is drawn, then each group's rows run from the highest percent to the lowest. (D50)
+- **S9.6** [view] Given more rows than fit the screen, when the down arrow or `j` is pressed, then the list scrolls down by one row. (D32)
+- **S9.7** [view] Given more rows than fit the screen and a scrolled list, when the up arrow or `k` is pressed, then the list scrolls up by one row. (D32)
+- **S9.8** [view] Given the view is open, when `?` is pressed, then the keys `q`, `r`, `s`, the scroll keys and `?` are listed with their actions. (D32)
+- **S9.9** [view] Given the view is open, when a key outside that list is pressed, then nothing changes. (D32)
+- **S9.10** [view] Given two groups and the order by day change, when the view is drawn, then the groups are still in file order. (D50)
 
 ### S10 — Sparkline
 
 As the user, I want a small chart of the day in each row, so that I see how the price got where it is. (D13)
 
-- **S10.1** Given a row with a quote from an open market, when the view is drawn at full width, then the row ends with a sparkline of the day's prices so far. (D13)
-- **S10.2** Given a row of a closed market, when the view is drawn, then the sparkline shows the last trading day. (D50)
-- **S10.3** Given the view, when any key from section 7.3 is pressed, then no alert, detail view or news appears. (D13, D32)
+- **S10.1** [view] Given a row with a quote from an open market, when the view is drawn at full width, then the row ends with a sparkline of the day's prices so far. (D13)
+- **S10.2** [view] Given a row of a closed market, when the view is drawn, then the sparkline shows the last trading day. (D50)
+- **S10.3** [view] Given the view, when any key from section 7.3 is pressed, then no alert, detail view or news appears. (D13, D32)
 
 ### S11 — The watchlist is a file I edit
 
 As the user, I want the watchlist in a config file that I edit by hand and keep in my dev-env repository, so that it is versioned with the rest of my setup. (D12, D28, D29)
 
-- **S11.1** Given a valid file at `~/.config/brl-stocks/config.toml` and no `--config` flag, when the tool starts, then it shows that file's watchlist. (D29)
-- **S11.2** Given `--config /tmp/other.toml`, when the tool starts, then it shows the watchlist of that file. (D29)
-- **S11.3** Given the view is open, when a ticker is added to the config file and the file is saved, then a row for it appears within 5 seconds, without a restart. (D12, D50)
-- **S11.4** Given the view is open, when a ticker is removed from the config file and the file is saved, then its row disappears within 5 seconds. (D12, D50)
-- **S11.5** Given `~/.config/brl-stocks` is a symbolic link to a folder elsewhere, when the tool starts, then it reads the config through the link. (D29)
-- **S11.6** Given `~/.config/brl-stocks` is a symbolic link and the view is open, when a ticker is added to the file in the link's target, then a row for it appears within 5 seconds. (D12, D29, D50)
-- **S11.7** Given `~/.config/brl-stocks` is a symbolic link, when the tool has run in any mode and exited, then the link still exists and points to the same target. (D29)
-- **S11.8** Given a config file, when the tool has run in any mode and exited, then the file's content is unchanged, byte for byte. (D12, D35)
-- **S11.9** Given a config file that cannot be parsed, when the tool starts, then it exits with status 2. (D45)
-- **S11.10** Given the view is open, when the config file is saved with a syntax error, then the view keeps the last valid watchlist. (D45)
-- **S11.11** Given the view is open, when the config file is saved with a syntax error, then the error line names the file and the problem. (D45)
-- **S11.12** Given a config with a key the tool does not know, when the tool starts, then a warning names the key. (D50)
-- **S11.13** Given a config with 25 tickers, when the view is drawn, then all 25 rows exist. (D8, D50)
-- **S11.14** Given the view is open, when the config file is deleted, then the view keeps the last loaded watchlist. (D50)
-- **S11.15** Given `XDG_CONFIG_HOME=/tmp/x` and a valid file at `/tmp/x/brl-stocks/config.toml`, when the tool starts without `--config`, then it shows that file's watchlist. (D50)
-- **S11.16** Given a config file that cannot be parsed, when the tool starts, then a message on the error stream names the file and the problem. (D45)
-- **S11.17** Given a config with a key the tool does not know, when the tool starts, then the watchlist is shown. (D50)
-- **S11.18** Given a config with 25 tickers, when the view is drawn, then a warning in the status line says the tool is designed for 20. (D50)
-- **S11.19** Given the view is open, when the config file is deleted, then the error line says the file is gone. (D50)
+- **S11.1** [view, print] Given a valid file at `~/.config/brl-stocks/config.toml` and no `--config` flag, when the tool starts, then it shows that file's watchlist. (D29)
+- **S11.2** [view, print] Given `--config /tmp/other.toml`, when the tool starts, then it shows the watchlist of that file. (D29)
+- **S11.3** [view] Given the view is open, when a ticker is added to the config file and the file is saved, then a row for it appears within 5 seconds, without a restart. (D12, D50)
+- **S11.4** [view] Given the view is open, when a ticker is removed from the config file and the file is saved, then its row disappears within 5 seconds. (D12, D50)
+- **S11.5** [view, print] Given `~/.config/brl-stocks` is a symbolic link to a folder elsewhere, when the tool starts, then it reads the config through the link. (D29)
+- **S11.6** [view] Given `~/.config/brl-stocks` is a symbolic link and the view is open, when a ticker is added to the file in the link's target, then a row for it appears within 5 seconds. (D12, D29, D50)
+- **S11.7** [view, print] Given `~/.config/brl-stocks` is a symbolic link, when the tool has run in any mode and exited, then the link still exists and points to the same target. (D29)
+- **S11.8** [view, print] Given a config file, when the tool has run in any mode and exited, then the file's content is unchanged, byte for byte. (D12, D35)
+- **S11.9** [view, print] Given a config file that cannot be parsed, when the tool starts, then it exits with status 2. (D45)
+- **S11.10** [view] Given the view is open, when the config file is saved with a syntax error, then the view keeps the last valid watchlist. (D45)
+- **S11.11** [view] Given the view is open, when the config file is saved with a syntax error, then the error line names the file and the problem. (D45)
+- **S11.12** [view, print] Given a config with a key the tool does not know, when the tool starts, then a warning names the key. (D50)
+- **S11.13** [view, print] Given a config with 25 tickers, when the view is drawn, then all 25 rows exist. (D8, D50)
+- **S11.14** [view] Given the view is open, when the config file is deleted, then the view keeps the last loaded watchlist. (D50)
+- **S11.15** [view, print] Given `XDG_CONFIG_HOME=/tmp/x` and a valid file at `/tmp/x/brl-stocks/config.toml`, when the tool starts without `--config`, then it shows that file's watchlist. (D50)
+- **S11.16** [view, print] Given a config file that cannot be parsed, when the tool starts, then a message on the error stream names the file and the problem. (D45)
+- **S11.17** [view, print] Given a config with a key the tool does not know, when the tool starts, then the watchlist is shown. (D50)
+- **S11.18** [view, print] Given a config with 25 tickers, when the view is drawn, then a warning in the status line says the tool is designed for 20. (D50)
+- **S11.19** [view] Given the view is open, when the config file is deleted, then the error line says the file is gone. (D50)
 
 ### S12 — No config yet
 
 As a new user, I want the tool to run before I have written a config, so that I can try it first. (D35)
 
-- **S12.1** Given no file at the default config path, when the tool starts, then it shows a built-in example watchlist. (D35)
-- **S12.2** Given no file at the default config path, when the tool starts, then it names the path where a config file belongs. (D35)
-- **S12.3** Given no file at the default config path, when the tool has run in any mode and exited, then no file or folder has been created under the config path. (D35)
-- **S12.4** Given `--config /tmp/missing.toml` and no such file, when the tool starts, then it exits with status 2. (D50)
-- **S12.5** Given `--config /tmp/missing.toml` and no such file, when the tool starts, then a message on the error stream names the path. (D50)
+- **S12.1** [view, print] Given no file at the default config path, when the tool starts, then it shows a built-in example watchlist. (D35)
+- **S12.2** [view, print] Given no file at the default config path, when the tool starts, then it names the path where a config file belongs. (D35)
+- **S12.3** [view, print] Given no file at the default config path, when the tool has run in any mode and exited, then no file or folder has been created under the config path. (D35)
+- **S12.4** [view, print] Given `--config /tmp/missing.toml` and no such file, when the tool starts, then it exits with status 2. (D50)
+- **S12.5** [view, print] Given `--config /tmp/missing.toml` and no such file, when the tool starts, then a message on the error stream names the path. (D50)
 
 ### S13 — One-shot table
 
 As a script or the user at a prompt, I want the watchlist printed once, so that I can read it or pipe it without opening the view. (D6, D18, D23)
 
-- **S13.1** Given a valid config, when `brl-stocks print` is run, then it prints an aligned table with one line per row to standard output and exits. (D6, D18, D41)
-- **S13.2** Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run with the default interval, then no request is sent to the source. (D23)
-- **S13.3** Given an open market and a cache whose quotes were fetched 5 minutes ago, when `brl-stocks print` is run, then the quotes are requested from the source before printing. (D23)
-- **S13.4** Given an open market and a cache fetched 20 seconds ago, when `brl-stocks print --refresh` is run, then the quotes are requested from the source. (D23, D41)
-- **S13.5** Given a market closed for more than 30 minutes, with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15, D50)
-- **S13.6** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then the cached quotes are printed, marked stale with their age. (D19)
-- **S13.7** Given the output is piped to another program, when `brl-stocks print` is run, then the output contains no colour codes. (D25)
-- **S13.8** Given a config with groups, when `brl-stocks print` is run, then each group's name is on a line of its own above its rows. (D16, D50)
-- **S13.9** Given a source that does not answer, when `brl-stocks print` is run, then it prints and exits within 11 seconds. (D50)
-- **S13.10** Given the source is rate-limiting or refusing the tool, when `brl-stocks print --refresh` is run, then no request is sent. (D50)
-- **S13.11** Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run, then the table shows the cached quotes. (D23)
-- **S13.12** Given a closed market with cached quotes, when `brl-stocks print` is run, then that market's rows show the last close. (D15)
-- **S13.13** Given a default summary, when `brl-stocks print` is run, then the first line of the output starts with `IBOV`. (D11, D50, D71)
-- **S13.14** Given the US market is closed and B3 is open, when `brl-stocks print` is run, then the last line of the output reads `B3 open · US closed`. (D15, D50)
-- **S13.15** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then exactly one line on the error stream starts with `source unreachable`. (D19, D50, D71)
-- **S13.16** Given a row whose fetch failed 30 seconds ago, when `brl-stocks print` is run without `--refresh`, then that row is not requested. (D19, D50)
-- **S13.17** Given a B3 row whose last price is 38.42, when `brl-stocks print` is run, then the table shows `R$ 38,42` in that row. (D46)
-- **S13.18** Given a US row whose last price is 229.87, when `brl-stocks print` is run, then the table shows `US$ 229.87` in that row. (D46)
-- **S13.19** Given a default summary and an Ibovespa value of 158432.10, when `brl-stocks print` is run, then the first line shows `158.432`. (D51, D65)
-- **S13.20** Given two rows whose names and prices have different lengths, when `brl-stocks print` is run, then the two prices end at the same column. (D18, D71)
-- **S13.21** Given a source that is rate-limiting and cached quotes, when `brl-stocks print` is run, then one line on the error stream starts with `source is rate-limiting`. (D19, D38, D71)
-- **S13.22** Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then every one of them prints a quote for each row. (D73)
-- **S13.23** Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then the source receives one request per row. (D20, D49)
-- **S13.24** Given no cache and a source that cannot be reached, when `brl-stocks print` is run, then the last line of the output reads `B3 unknown · US unknown`. (D74)
+- **S13.1** [print] Given a valid config, when `brl-stocks print` is run, then it prints an aligned table with one line per row to standard output and exits. (D6, D18, D41)
+- **S13.2** [print] Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run with the default interval, then no request is sent to the source. (D23)
+- **S13.3** [print] Given an open market and a cache whose quotes were fetched 5 minutes ago, when `brl-stocks print` is run, then the quotes are requested from the source before printing. (D23)
+- **S13.4** [print] Given an open market and a cache fetched 20 seconds ago, when `brl-stocks print --refresh` is run, then the quotes are requested from the source. (D23, D41)
+- **S13.5** [print] Given a market closed for more than 30 minutes, with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15, D50)
+- **S13.6** [print] Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then the cached quotes are printed, marked stale with their age. (D19)
+- **S13.7** [print] Given the output is piped to another program, when `brl-stocks print` is run, then the output contains no colour codes. (D25)
+- **S13.8** [print] Given a config with groups, when `brl-stocks print` is run, then each group's name is on a line of its own above its rows. (D16, D50)
+- **S13.9** [print] Given a source that does not answer, when `brl-stocks print` is run, then it prints and exits within 11 seconds. (D50)
+- **S13.10** [print] Given the source is rate-limiting or refusing the tool, when `brl-stocks print --refresh` is run, then no request is sent. (D50)
+- **S13.11** [print] Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run, then the table shows the cached quotes. (D23)
+- **S13.12** [print] Given a closed market with cached quotes, when `brl-stocks print` is run, then that market's rows show the last close. (D15)
+- **S13.13** [print] Given a default summary, when `brl-stocks print` is run, then the first line of the output starts with `IBOV`. (D11, D50, D71)
+- **S13.14** [print] Given the US market is closed and B3 is open, when `brl-stocks print` is run, then the last line of the output reads `B3 open · US closed`. (D15, D50)
+- **S13.15** [print] Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then exactly one line on the error stream starts with `source unreachable`. (D19, D50, D71)
+- **S13.16** [print] Given a row whose fetch failed 30 seconds ago, when `brl-stocks print` is run without `--refresh`, then that row is not requested. (D19, D50)
+- **S13.17** [print] Given a B3 row whose last price is 38.42, when `brl-stocks print` is run, then the table shows `R$ 38,42` in that row. (D46)
+- **S13.18** [print] Given a US row whose last price is 229.87, when `brl-stocks print` is run, then the table shows `US$ 229.87` in that row. (D46)
+- **S13.19** [print] Given a default summary and an Ibovespa value of 158432.10, when `brl-stocks print` is run, then the first line shows `158.432`. (D51, D65)
+- **S13.20** [print] Given two rows whose names and prices have different lengths, when `brl-stocks print` is run, then the two prices end at the same column. (D18, D71)
+- **S13.21** [print] Given a source that is rate-limiting and cached quotes, when `brl-stocks print` is run, then one line on the error stream starts with `source is rate-limiting`. (D19, D38, D71)
+- **S13.22** [print] Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then every one of them prints a quote for each row. (D73)
+- **S13.23** [print] Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then the source receives one request per row. (D20, D49)
+- **S13.24** [print] Given no cache and a source that cannot be reached, when `brl-stocks print` is run, then the last line of the output reads `B3 unknown · US unknown`. (D74)
 
 ### S14 — One-shot JSON
 
 As a script, I want the watchlist as JSON, so that I can parse it without scraping a table. (D18)
 
-- **S14.1** Given a valid config, when `brl-stocks print --json` is run, then standard output is exactly one valid JSON document. (D18)
-- **S14.2** Given a row with a quote, when `brl-stocks print --json` is run, then the row's object carries ticker, name, last price, day change value, day change percent, day low, day high and quote time. (D9, D18)
-- **S14.3** Given any run with `--json`, when the document is read, then it has a `schema_version` of 1. (D43)
-- **S14.4** Given every row is fresh, when `brl-stocks print --json` is run, then `state` is `ok`. (D44)
-- **S14.5** Given one stale row and the others fresh, when `brl-stocks print --json` is run, then `state` is `partial`. (D44)
-- **S14.6** Given no cache and a source that cannot be reached, when `brl-stocks print --json` is run, then standard output is a valid document with `state` `error`. (D44)
-- **S14.7** Given no cache and a source that cannot be reached, when `brl-stocks print --json` is run, then the exit status is 0. (D44)
-- **S14.8** Given a config file that cannot be parsed, when `brl-stocks print --json` is run, then the exit status is 2. (D44, D45)
-- **S14.9** Given a row with a quote, when the document is read, then its prices are JSON numbers. (D43)
-- **S14.10** Given a row with a quote, when the document is read, then its times are UTC in RFC 3339. (D43)
-- **S14.11** Given a closed market, when `brl-stocks print --json` is run, then the rows of that market have `market_state` `closed`. (D15, D43)
-- **S14.12** Given a B3 row whose last price is 38.425, when `brl-stocks print --json` is run, then its `price` is the number 38.425. (D43, D66)
+- **S14.1** [print] Given a valid config, when `brl-stocks print --json` is run, then standard output is exactly one valid JSON document. (D18)
+- **S14.2** [print] Given a row with a quote, when `brl-stocks print --json` is run, then the row's object carries ticker, name, last price, day change value, day change percent, day low, day high and quote time. (D9, D18)
+- **S14.3** [print] Given any run with `--json`, when the document is read, then it has a `schema_version` of 1. (D43)
+- **S14.4** [print] Given every row is fresh, when `brl-stocks print --json` is run, then `state` is `ok`. (D44)
+- **S14.5** [print] Given one stale row and the others fresh, when `brl-stocks print --json` is run, then `state` is `partial`. (D44)
+- **S14.6** [print] Given no cache and a source that cannot be reached, when `brl-stocks print --json` is run, then standard output is a valid document with `state` `error`. (D44)
+- **S14.7** [print] Given no cache and a source that cannot be reached, when `brl-stocks print --json` is run, then the exit status is 0. (D44)
+- **S14.8** [print] Given a config file that cannot be parsed, when `brl-stocks print --json` is run, then the exit status is 2. (D44, D45)
+- **S14.9** [print] Given a row with a quote, when the document is read, then its prices are JSON numbers. (D43)
+- **S14.10** [print] Given a row with a quote, when the document is read, then its times are UTC in RFC 3339. (D43)
+- **S14.11** [print] Given a closed market, when `brl-stocks print --json` is run, then the rows of that market have `market_state` `closed`. (D15, D43)
+- **S14.12** [print] Given a B3 row whose last price is 38.425, when `brl-stocks print --json` is run, then its `price` is the number 38.425. (D43, D66)
 
 ### S15 — The last quotes are kept between runs
 
 As the user, I want the last quotes kept between runs, so that the view starts with data and frequent one-shot calls do not hit the source. (D20, D29)
 
-- **S15.1** Given a run that fetched quotes and then ended, when the tool is started again with no network, then the rows show those quotes. (D20)
-- **S15.2** Given the tool has fetched quotes, when the files it keeps are listed, then they are under `~/.cache/brl-stocks/`. (D29)
-- **S15.3** Given the view has run for eight hours of open market, when the cache folder is measured, then its size is within 10% of its size after the first full refresh. (D20, D50)
-- **S15.4** Given a cache file emptied or filled with garbage, when the tool starts, then it shows the watchlist as it does with no cache. (D48)
-- **S15.5** Given a cache folder that cannot be written, when the view runs, then it shows quotes. (D50, D60)
-- **S15.6** Given a ticker was removed from the config, a refresh then succeeded, and the ticker is added back with no network, when the view is drawn, then the row shows no data. (D50)
-- **S15.7** Given a cache file emptied or filled with garbage, when the tool starts, then no message about the cache is shown. (D48)
-- **S15.8** Given a cache folder that cannot be written, when the tool runs, then one warning says the quotes will not be kept. (D50)
-- **S15.9** Given a cache folder that cannot be written, when `brl-stocks print` is run, then no request is sent to the source. (D60)
+- **S15.1** [view, print] Given a run that fetched quotes and then ended, when the tool is started again with no network, then the rows show those quotes. (D20)
+- **S15.2** [view, print] Given the tool has fetched quotes, when the files it keeps are listed, then they are under `~/.cache/brl-stocks/`. (D29)
+- **S15.3** [view] Given the view has run for eight hours of open market, when the cache folder is measured, then its size is within 10% of its size after the first full refresh. (D20, D50)
+- **S15.4** [view, print] Given a cache file emptied or filled with garbage, when the tool starts, then it shows the watchlist as it does with no cache. (D48)
+- **S15.5** [view] Given a cache folder that cannot be written, when the view runs, then it shows quotes. (D50, D60)
+- **S15.6** [view, print] Given a ticker was removed from the config, a refresh then succeeded, and the ticker is added back with no network, when the view is drawn, then the row shows no data. (D50)
+- **S15.7** [view, print] Given a cache file emptied or filled with garbage, when the tool starts, then no message about the cache is shown. (D48)
+- **S15.8** [view, print] Given a cache folder that cannot be written, when the tool runs, then one warning says the quotes will not be kept. (D50)
+- **S15.9** [print] Given a cache folder that cannot be written, when `brl-stocks print` is run, then no request is sent to the source. (D60)
 
 ### S16 — Colour
 
 As the user, I want gains and losses coloured from my terminal's palette, and plain text where colour does not belong, so that the tool fits my setup and my pipes. (D25)
 
-- **S16.1** Given a row whose day change is positive, when it is drawn on a terminal, then the change is in the terminal palette's green. (D25)
-- **S16.2** Given a row whose day change is negative, when it is drawn on a terminal, then the change is in the terminal palette's red. (D25)
-- **S16.3** Given `NO_COLOR` is set, when the view or the one-shot output is drawn, then it contains no colour codes. (D25)
-- **S16.4** Given colour is off, when a row is drawn, then the day change still starts with `+` or `-`. (D50)
+- **S16.1** [view, print] Given a row whose day change is positive, when it is drawn on a terminal, then the change is in the terminal palette's green. (D25)
+- **S16.2** [view, print] Given a row whose day change is negative, when it is drawn on a terminal, then the change is in the terminal palette's red. (D25)
+- **S16.3** [view, print] Given `NO_COLOR` is set, when the view or the one-shot output is drawn, then it contains no colour codes. (D25)
+- **S16.4** [view, print] Given colour is off, when a row is drawn, then the day change still starts with `+` or `-`. (D50)
 
 ### S17 — The data source can be replaced
 
 As the user, I want quotes to come from a free source that needs no key, and to be able to change the source later, so that a broken source is not the end of the tool. (D5, D7, D17)
 
-- **S17.1** Given a fresh machine with only a config file, no key and no account, when the tool runs, then it shows quotes. (D5, D7)
-- **S17.2** Given a stand-in source put in place of the default one, when the tool runs with an unchanged config file, then the same rows are shown with the stand-in's quotes. (D7, D17)
-- **S17.3** Given the first version, when its config file and flags are listed, then none of them selects a data source. (D50)
+- **S17.1** [view, print] Given a fresh machine with only a config file, no key and no account, when the tool runs, then it shows quotes. (D5, D7)
+- **S17.2** [view, print] Given a stand-in source put in place of the default one, when the tool runs with an unchanged config file, then the same rows are shown with the stand-in's quotes. (D7, D17)
+- **S17.3** [view, print] Given the first version, when its config file and flags are listed, then none of them selects a data source. (D50)
+- **S17.4** [view, print] Given the help text, when it is read, then `BRL_STOCKS_SOURCE_URL` does not appear in it. (D70)
+
+### S18 — Command line
+
+As the user, I want the usual flags to work and a mistyped one to be refused, so that the tool behaves like other command-line tools. (D50)
+
+- **S18.1** [view, print] Given `--version`, when the tool is run, then it prints the version and exits with status 0. (D50, D77)
+- **S18.2** [view, print] Given `--help`, when the tool is run, then it prints the usage and exits with status 0. (D50, D77)
+- **S18.3** [view, print] Given a flag the tool does not know, when the tool is run, then it exits with status 2. (D50, D77)
+- **S18.4** [view, print] Given a flag the tool does not know, when the tool is run, then a usage message is on the error stream. (D50, D77)
 
 ## 9. Quality requirements
 
-| # | Requirement | Number and how it is measured | Source |
-|---|---|---|---|
-| QR1 | Capacity | Every criterion in section 8 holds with 20 tickers and 3 summary entries. Measured by running the acceptance tests with a 20-ticker config | D8, D11 |
-| QR2 | The view starts with data | With a cache present, rows show cached quotes within 300 ms of launch. Measured from process start until the rows are on screen, 20 tickers, median of 10 runs | D20, D50 |
-| QR3 | A one-shot call on a fresh cache is cheap | It sends zero requests (D23) and ends within 100 ms (D50). Measured with a counting stand-in source and wall time, 20 tickers, median of 10 runs | D23, D50 |
-| QR4 | Request load in normal use | With the view open and `brl-stocks print` called every 2 seconds for 10 minutes, open market, 60-second interval, 23 entries: at most 345 requests in total (15 per entry: one per interval, and half as many again for overlap between instances), all instances together. Measured with a counting stand-in source | D14, D20, F3, D49 |
-| QR5 | Request load during a block | From the first refused answer, at most 10 requests in any 10 minutes while the source keeps refusing, all running instances together. Measured with a stand-in source that refuses everything, the view open and `brl-stocks print --refresh` called every 2 seconds | D38, F3, F11, D49 |
-| QR6 | Freshness while healthy | With an open market and a source that answers, no row's last successful fetch is older than two refresh intervals. Measured by sampling the view's rows every 10 seconds for 10 minutes: no stale mark | D14, D40 |
-| QR7 | The config is never touched | After any run, the config file is byte-identical and a symbolic link in its path still points to the same target. Measured by checksum and link target before and after each acceptance test | D29, D35 |
-| QR8 | No history is kept | The cache holds at most one quote per ticker; its size after 8 hours of running is within 10% of its size after the first full refresh | D20, D50 |
-| QR9 | Nothing personal in the repository | The published repository holds no key, token or personal watchlist. Measured by review before publishing | D1 |
-| QR10 | Free and keyless | The tool shows quotes with no paid plan, key or account. Measured by S17.1 | D5, D7 |
-| QR11 | Keys answer during a fetch | A key press changes the screen within 100 ms, also while a refresh is running. Measured with a stand-in source that answers after 5 seconds | D50 |
-| QR12 | Privacy on the wire | The tool contacts only its data source, and sends it nothing about the user beyond the symbols requested. Measured by recording the network traffic of a run | D1, D50 |
+| # | Requirement | Number and how it is measured | Surfaces | Source |
+|---|---|---|---|---|
+| QR1 | Capacity | Every criterion in section 8 holds with 20 tickers and 3 summary entries. Measured by running the acceptance tests with a 20-ticker config | view, print | D8, D11 |
+| QR2 | The view starts with data | With a cache present, rows show cached quotes within 300 ms of launch. Measured from process start until the rows are on screen, 20 tickers, median of 10 runs | view | D20, D50 |
+| QR3 | A one-shot call on a fresh cache is cheap | It sends zero requests (D23) and ends within 100 ms (D50). Measured with a counting stand-in source and wall time, 20 tickers, median of 10 runs | print | D23, D50 |
+| QR4 | Request load in normal use | With the view open and `brl-stocks print` called every 2 seconds for 10 minutes, open market, 60-second interval, 23 entries: at most 345 requests in total (15 per entry: one per interval, and half as many again for overlap between instances), all instances together. Measured with a counting stand-in source | view, print | D14, D20, F3, D49 |
+| QR5 | Request load during a block | From the first refused answer, at most 10 requests in any 10 minutes while the source keeps refusing, all running instances together. Measured with a stand-in source that refuses everything, the view open and `brl-stocks print --refresh` called every 2 seconds | view, print | D38, F3, F11, D49 |
+| QR6 | Freshness while healthy | With an open market and a source that answers, no row's last successful fetch is older than two refresh intervals. Measured by sampling the view's rows every 10 seconds for 10 minutes: no stale mark | view | D14, D40 |
+| QR7 | The config is never touched | After any run, the config file is byte-identical and a symbolic link in its path still points to the same target. Measured by checksum and link target before and after each acceptance test | view, print | D29, D35 |
+| QR8 | No history is kept | The cache holds at most one quote per ticker; its size after 8 hours of running is within 10% of its size after the first full refresh | view, print | D20, D50 |
+| QR9 | Nothing personal in the repository | The published repository holds no key, token or personal watchlist. Measured by review before publishing | none: the published repository | D1 |
+| QR10 | Free and keyless | The tool shows quotes with no paid plan, key or account. Measured by S17.1 | view, print | D5, D7 |
+| QR11 | Keys answer during a fetch | A key press changes the screen within 100 ms, also while a refresh is running. Measured with a stand-in source that answers after 5 seconds | view | D50 |
+| QR12 | Privacy on the wire | The tool contacts only its data source, and sends it nothing about the user beyond the symbols requested. Measured by recording the network traffic of a run | view, print | D1, D50 |
 
 ## 10. Design handover
 
@@ -778,6 +810,9 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P50 | The summary entries are labelled `IBOV`, `S&P 500` and `USD/BRL`, in the view and in the one-shot table | 7.3, S13.13 | settled as D71 |
 | P51 | Alignment: ticker, name and quote time start at the same position in every row; last price, change value, percent, low and high end at the same position. This defines "aligned" in D18 | 7.3, 7.4, S13.20 | settled as D71 |
 | P52 | The cause on the error line and the error stream is one of four fixed phrases: `source unreachable`, `source is rate-limiting`, `source refused access`, `source answer not understood` | 7.3, S13.15, S13.21 | settled as D71 |
+| P53 | In the one-shot table, a quote time not from today reads `DD/MM`, as in the view. This reads D50 (P21), which is worded without a surface, as holding for both | 8 (surfaces), S1.7 | settled as D75 |
+| P54 | In one-shot, the line on the error stream for a failed fetch or a block gives what the view's error line gives: it starts with the cause phrase (D71), then the number of rows not updated and the time of the next attempt; with several problems, one such line, chosen by the view's order (block, then failed fetches). 7.4 says only that the cause goes there; 6.3 says "the status line" for a forced one-shot call during a block, and this moves it to the error stream | 6.3, 7.4, S6.3, S6.9, S7.4 | settled as D76 |
+| P55 | `--help`, `--version` and the usage error for an unknown flag work both with and without the `print` command. 7.1 lists the flags without saying on which commands | 7, 7.1, S18 | settled as D77 |
 
 ## 12. Open and unverified
 
@@ -805,7 +840,7 @@ Every decision in the log, and where the spec realises it.
 | D3 | 1, 2 (goals and non-goals), 4 (Watchlist invariants), S1 |
 | D4 | 1, 2 (non-goals), 5 |
 | D5 | 2, S17.1, QR10 |
-| D6 | 1, 2, 7.1, S1, S13; the separation of the core is design (section 10) |
+| D6 | 1, 2, 7, 7.1, S1, S13, S18; the separation of the core is design (section 10) |
 | D7 | 2, 5, S17; the interface is design (section 10) |
 | D8 | 1, 2 (non-goals), 7.2, S11.13, QR1 |
 | D9 | 4 (Quote), 7.3, S1.2, S14.2 |
@@ -849,7 +884,7 @@ Every decision in the log, and where the spec realises it.
 | D47 | 7.3, S5.5 |
 | D48 | 7.7, S15.4, S15.7 |
 | D49 | QR4, QR5 |
-| D50 | The 36 routine proposals P10–P45; each is listed in section 11 with the places that realise it |
+| D50 | The 36 routine proposals P10–P45; each is listed in section 11 with the places that realise it. Also S18 (7.1) |
 | D51 | 7.3, 7.4, S2.5–S2.8, S13.19 |
 | D52 | process (approval of this spec) |
 | D53–D58 | design, see section 10 and `docs/design.md` |
@@ -864,8 +899,11 @@ Every decision in the log, and where the spec realises it.
 | D67 | process (approval of this spec as updated) |
 | D68 | 2 (non-goals) |
 | D69 | process (approval of the design document) |
-| D70 | 7.1; its use is design (section 10 and `docs/design.md`) |
+| D70 | 7.1, S17.4; its use is design (section 10 and `docs/design.md`) |
 | D71 | 7.3, 7.4, S13.13, S13.15, S13.20, S13.21 |
 | D72 | process (approval of this spec and of the design document, as updated) |
 | D73 | 6.5, S13.22 |
 | D74 | 7.3, S13.24 |
+| D75 | 7.4, S1.7 |
+| D76 | 6.3, 7.4, 8 (surfaces), S6.9, S7.4 |
+| D77 | 7, 7.1, S18 |
