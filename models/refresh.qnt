@@ -311,6 +311,16 @@ module refresh {
   // the same, and the source file may be lost at any moment
   action stepLossy = any { step, loseSourceFile }
 
+  // Narrower steps, so that an exhaustive check runs to completion. Each
+  // leaves out what its properties do not depend on.
+  // A source that never refuses: for noRegress, noRevival, oneFetcherPerLiveClaim.
+  action stepQuiet = any { procStep, tick, newQuote, removeRow }
+  // A source that refuses and recovers, with one quote version and no removal:
+  // for noBadClear, waitGrowsOnlyOnProbes, boundedSendsWhileRefusing.
+  action stepBlocks = any { procStep, tick, flipSource }
+  // The same with the source file lost at any moment.
+  action stepBlocksLossy = any { stepBlocks, loseSourceFile }
+
   // ================= properties =================
 
   // A newer quote is never replaced by an older one (rule 2).
