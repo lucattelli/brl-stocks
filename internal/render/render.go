@@ -363,6 +363,7 @@ func JSON(w io.Writer, v View) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	return enc.Encode(doc)
 }
 
@@ -370,5 +371,6 @@ func JSON(w io.Writer, v View) error {
 func ErrorDocument(w io.Writer, now time.Time, reason string) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
 	_ = enc.Encode(document{SchemaVersion: 1, State: "error", GeneratedAt: now.UTC(), Error: &reason, Summary: []jsonItem{}, Groups: []jsonGrp{}})
 }
