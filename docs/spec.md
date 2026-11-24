@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D72). Earlier approvals: D52, D67. Since D67 it was updated for D68 and D70 and for three points from writing the acceptance tests (D71). Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D72, facts F1–F31).
+Status: approved, 2026-11-23 (D72), and updated on 2026-11-24 for D73 and D74, which came out of verifying the built tool. Earlier approvals: D52, D67. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D74, facts F1–F32).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -236,6 +236,8 @@ A one-shot call decides per row, in this order:
 
 Waits and blocks are shared: they hold for the view and for every one-shot call alike (D50).
 
+When a row has no quote at all and another process is already fetching it, a one-shot call waits for that process, at most its 10 seconds, then prints what the cache holds (D73).
+
 When the cache folder cannot be written, a one-shot call fetches nothing at all: it prints what the cache holds, or the `error` state, and warns (D60).
 
 ## 7. Behaviour seen from outside
@@ -328,7 +330,7 @@ B3 open · US closed · sort: file order · ? help
 - **Not found.** "not found" in place of the price; `—` in the other data columns (D39, D50).
 - **No data yet.** `—` in every data column (D50).
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
-- **Closed market.** The status line gives the state of each market: `B3 open · US closed`. Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
+- **Closed market.** The status line gives the state of each market: `B3 open · US closed`. While the tool has no quote for any instrument of a market, the word is `unknown` (D74). Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
 - **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt. The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
 - **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
@@ -617,6 +619,9 @@ As a script or the user at a prompt, I want the watchlist printed once, so that 
 - **S13.19** Given a default summary and an Ibovespa value of 158432.10, when `brl-stocks print` is run, then the first line shows `158.432`. (D51, D65)
 - **S13.20** Given two rows whose names and prices have different lengths, when `brl-stocks print` is run, then the two prices end at the same column. (D18, D71)
 - **S13.21** Given a source that is rate-limiting and cached quotes, when `brl-stocks print` is run, then one line on the error stream starts with `source is rate-limiting`. (D19, D38, D71)
+- **S13.22** Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then every one of them prints a quote for each row. (D73)
+- **S13.23** Given an empty cache and a source that answers, when ten `brl-stocks print` calls are started at the same moment, then the source receives one request per row. (D20, D49)
+- **S13.24** Given no cache and a source that cannot be reached, when `brl-stocks print` is run, then the last line of the output reads `B3 unknown · US unknown`. (D74)
 
 ### S14 — One-shot JSON
 
@@ -862,3 +867,5 @@ Every decision in the log, and where the spec realises it.
 | D70 | 7.1; its use is design (section 10 and `docs/design.md`) |
 | D71 | 7.3, 7.4, S13.13, S13.15, S13.20, S13.21 |
 | D72 | process (approval of this spec and of the design document, as updated) |
+| D73 | 6.5, S13.22 |
+| D74 | 7.3, S13.24 |

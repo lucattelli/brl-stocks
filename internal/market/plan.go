@@ -134,6 +134,9 @@ func Plan(in PlanInput) PlanResult {
 	return PlanResult{Due: due}
 }
 
+// ClaimLive reports whether another round still holds a row.
+func ClaimLive(e Entry, now time.Time) bool { return live(e.ClaimedAt, e.ClaimID, now) }
+
 // live reports whether a claim made at t still holds. A stamp in the future
 // is void (protocol rule 8).
 func live(t time.Time, id string, now time.Time) bool {

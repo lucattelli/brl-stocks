@@ -123,7 +123,7 @@ func runPrint(ctx context.Context, o options, d deps.Deps) int {
 	eng := engine.Engine{P: d.Provider, C: cache.Files{Dir: cacheDir(d)}, Now: d.Now, After: d.After}
 	res := eng.Cycle(ctx, engine.Request{
 		Want: cfg.Want(), Interval: cfg.Interval, ConfigMTime: mtime,
-		Force: o.refresh, Deadline: printDeadline,
+		Force: o.refresh, Deadline: printDeadline, WaitForOthers: true,
 	})
 	view := render.View{Cfg: cfg, Snap: res.Snap, Health: res.Health, Now: d.Now()}
 	if o.json {

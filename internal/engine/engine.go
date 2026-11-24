@@ -37,6 +37,7 @@ type Request struct {
 	Force           bool          // r and --refresh
 	Deadline        time.Duration // of the whole round
 	MayFetchUnpaced bool          // the view may fetch when nothing can be written; print may not (D60)
+	WaitForOthers   bool          // print waits for a row another process is fetching, if it has no quote (D73)
 }
 
 // Result is what a cycle leaves: the rows, the block record, and a warning
@@ -57,6 +58,41 @@ type outcome struct {
 // Cycle refreshes what is due. Failures of the source are data in the
 // result, never an error.
 func (e *Engine) Cycle(ctx context.Context, r Request) Result {
+	res := e.cycle(ctx, r)
+	if r.WaitForOthers && e.waitForOthers(r, &res) {
+		res = e.cycle(ctx, r) // whatever the other process left undone
+	}
+	return res
+}
+
+// waitForOthers waits while a wanted row has no quote and another process
+// holds its claim, at most for the round's deadline (D73). It reports
+// whether it waited.
+func (e *Engine) waitForOthers(r Request, res *Result) (waited bool) {
+	deadline := e.After(r.Deadline)
+	for {
+		now, pending := e.Now(), false
+		for _, in := range r.Want {
+			en := res.Snap[in]
+			if en.Quote == nil && en.Fail == nil && market.ClaimLive(en, now) {
+				pending = true
+				break
+			}
+		}
+		if !pending {
+			return waited
+		}
+		waited = true
+		select {
+		case <-deadline:
+			return waited
+		case <-e.After(100 * time.Millisecond):
+		}
+		res.Snap, res.Health = e.C.Load(), e.C.LoadSource(e.P.Name())
+	}
+}
+
+func (e *Engine) cycle(ctx context.Context, r Request) Result {
 	name := e.P.Name()
 	res := Result{Snap: e.C.Load(), Health: e.C.LoadSource(name)}
 	for pass := 0; pass < 2; pass++ {
@@ -117,7 +153,7 @@ func (e *Engine) plan(r Request, s market.Snapshot, h market.Health) market.Plan
 
 // fetch sends the round's requests, outside the lock. A worker looks at the
 // source file before each request; a refusal is saved the moment it is seen
-// and ends the round (protocol rules 4 and 9).
+// and no further request is sent (protocol rules 4 and 9).
 func (e *Engine) fetch(ctx context.Context, r Request, plan market.PlanResult, res *Result) map[market.Instrument]outcome {
 	name := e.P.Name()
 	roundCtx, cancel := context.WithCancel(ctx)
@@ -167,14 +203,14 @@ func (e *Engine) fetch(ctx context.Context, r Request, plan market.PlanResult, r
 				case err == nil:
 					out[in] = outcome{sent: true, quote: &q, at: at}
 				case f.Refusal():
+					// The round sends nothing more. Requests already sent are left
+					// to finish: giving them up would not unsend them, and their
+					// answers say which rows were refused (spec 6.3).
 					out[in] = outcome{sent: true, fail: f, at: at}
 					if !stopped {
 						stopped = true
 						e.saveBlock(name, f.Kind, plan.Probe, res)
-						cancel()
 					}
-				case stopped:
-					// given up because the round ended on a refusal: not a failure of this row
 				default:
 					out[in] = outcome{sent: true, fail: f, at: at}
 				}

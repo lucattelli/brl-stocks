@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: approved, 2026-11-23 (D72). Earlier approvals: D63, D69. Since D69 it gained D70 (a testing-only address for the source), two protocol rules that the Quint model surfaced (rules 6 and 9 of "The refresh protocol in detail"), and a timer in the test boundary. Open (section 7): Q62, and the protocol rules, which no critic attacked and the model has checked only up to 20 steps.
-Sources: `research/grilling-log.md` (decisions D1–D72, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
+Status: approved, 2026-11-23 (D72), and updated on 2026-11-24 for D73. Earlier approvals: D63, D69. Open (section 7): Q62, and the protocol rules, which no critic attacked; the model proves six properties of them for two processes, and verification ran them in the built tool for the one-shot mode.
+Sources: `research/grilling-log.md` (decisions D1–D74, facts F1–F32), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
@@ -166,6 +166,13 @@ The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a 
 - **Serves:** verification of the built binary against a local stand-in that stages answers and counts requests (QR4, QR5, S7, S8, S13).
 - **Rejected:** a data file passed as an argument (static, counts nothing, skips the network code); a separate test build (not the shipped binary); the real source only (failures cannot be staged).
 - **Consequence:** the rule against redirects to another host (QR12) applies to the address in use. Acceptance tests inside the code keep injecting the source through `Deps`; this setting is for runs of the real binary.
+
+### A one-shot call waits for a row that is being fetched (D73)
+
+- **Chosen:** when a wanted row has no quote and another round holds its claim, `print` reads the cache again every 100 milliseconds until the claim is released or its 10 seconds are over, then runs one more cycle for whatever is still due.
+- **Serves:** S13.22, S13.23, spec 6.5.
+- **Rejected:** printing at once (six or seven of ten simultaneous calls printed empty rows, F32).
+- **Consequence:** only rows with no quote at all cause a wait; a row with an old quote is printed as it is.
 
 ### No step layer (D57) and Bubble Tea 2 (D58)
 
