@@ -185,3 +185,29 @@ C1–C12 stand, as changed in section 7. Added or changed by the two rounds:
 ### Cost of stage 7
 
 No Claude subagents. Codex: one test prompt (3,834 tokens) and two critics (66,759 and 80,876 tokens).
+
+## 10. Stage 7, round 3: Codex attacks the approved design (2026-11-23)
+
+Run at the user's request after `docs/design.md` was approved (D63), because the protocol chosen in D54 and D56 had been recommended after round 2 and never attacked. Critic: a fresh Codex session, same model and settings, read-only; one agent, 45,406 tokens. Scope: the refresh protocol and its shared state; the close, open and holiday rule was excluded (Q62). Files: `critic-brief-design.md`, `critique-design-codex-3.md`. It followed the format.
+
+Outcome: 3 fatal, 6 serious, 1 minor, 1 excess.
+
+| # | Rating | Finding | Handling |
+|---|---|---|---|
+| 1 | fatal | Rows claimed before a refusal are still requested after it: two processes with eight claims each send 16 requests after another process's refusal (QR5 allows 10) | Patched: a worker reads the source file before each request |
+| 2 | fatal | After a claim expires, the old holder's commit overwrites a newer quote, or brings back a removed row (S15.6) | Patched: a claim id; a commit applies only to rows it still owns |
+| 3 | fatal | A process stopped inside the lock makes every other process wait without limit (S13.9) | Patched: the lock is tried for at most one second |
+| 4 | serious | A missing or replaced source file forgets the block; an empty read erases the view's own block | Patched: the refusal is also on the rows; the later record wins |
+| 5 | serious | The probe has no lifecycle: a dead probe claimer, outcomes other than success or refusal, which ticker to probe, a late success clearing a newer refusal | Patched: all defined |
+| 6 | serious | Two watchlists on one cache: 3,300 requests in ten minutes from two alternating `print` loops | A question for the user (Q66): D61 accepted the extra traffic before it was counted |
+| 7 | serious | Claims outlive finished or abandoned work, so rows cut off by the deadline wait 20 seconds (against D62) | Patched: a commit releases all claims of its round |
+| 8 | serious | "Never replace a quote with nothing" does not define a merge: a later failure must show the old price as stale, aged from its success | Patched: a field-by-field merge rule |
+| 9 | serious | A clock stepped back keeps a claim alive for an hour; a config replaced with an older modification time does not retry not-found rows | Patched in part: future stamps are void; the view retries on reload. `print` keeps the modification-time rule |
+| 10 | minor | At exactly one interval the design fetched where the spec prints from the cache | Patched |
+
+What held up: with one watchlist and ordinary timing, 230 to 253 requests in ten minutes (QR4 allows 345); with a saved block and a working probe, 9 (QR5 allows 10); emptying only the quote cache keeps the block; `Classify`; the config is only read; ten sparkline points bound the cache.
+
+This was the third and last round. The patches went into `docs/design.md` (section 4, "The refresh protocol in detail"), which is a draft again. They were not attacked; the design document lists the tests that would check them.
+
+Cost of round 3: no Claude subagents; Codex 45,406 tokens.
+

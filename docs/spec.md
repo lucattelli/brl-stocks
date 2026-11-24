@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D67). First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D67, facts F1–F30).
+Status: approved, 2026-11-23 (D67), and updated the same day for D68. First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D68, facts F1–F31).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -43,6 +43,7 @@ This spec says what the product does, not how it is built. It names no language,
 - Pre-market and after-hours prices (D50).
 - A second data source in the first version (D50).
 - Windows. The tool supports Linux and macOS (D59).
+- Two different watchlists in use at the same time. `--config` selects which watchlist a run uses; running instances on different watchlists at once is not supported, because they share the kept quotes (D61, D68).
 
 ## 3. Glossary
 
@@ -846,3 +847,4 @@ Every decision in the log, and where the spec realises it.
 | D65 | 7.3, 7.4, S1.10–S1.12, S2.5, S2.6, S2.8, S13.19 |
 | D66 | 7.3, 7.5, S1.12–S1.15, S14.12 |
 | D67 | process (approval of this spec as updated) |
+| D68 | 2 (non-goals) |

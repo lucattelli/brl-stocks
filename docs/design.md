@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: approved, 2026-11-23, with two items open (section 7): Q62 and the untested protocol of D54.
-Sources: `research/grilling-log.md` (decisions D1–D63, facts F1–F30), `docs/spec.md`, design run in `research/design/`.
+Status: approved, 2026-11-23 (D69). First approved as D63, then changed after a third attack round on the refresh protocol (section 4, "The refresh protocol in detail") and for D68. Open (section 7): Q62, and the protocol rules that no critic attacked.
+Sources: `research/grilling-log.md` (decisions D1–D69, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
@@ -70,6 +70,7 @@ type Entry struct {
     Quote       *Quote      // nil until the first success; Series holds at most 10 points (C14)
     FetchedAt   time.Time   // last success
     ClaimedAt   time.Time   // a process is about to request this row
+    ClaimID     string      // which process and round made the claim; random per round
     LastAttempt time.Time   // when the last request for it was answered or timed out
     Failures    int         // consecutive
     Fail        *Failure    // last failure, nil after a success
@@ -77,7 +78,8 @@ type Entry struct {
 type Health struct {        // one per source name, in the source file
     BlockedUntil time.Time
     Refusals     int
-    ProbeClaimedAt time.Time
+    ProbeClaimedAt time.Time  // expires after 20 seconds, like a row's claim
+    UpdatedAt    time.Time    // when this record was last written; the later record wins
 }
 func Plan(in PlanInput) PlanResult      // Want, Snap, Health, Interval, Now, ConfigMTime, Force → Due, Probe, NextTry
 func MarketState(m Market, s Snapshot, now time.Time) (open, known bool)
@@ -97,12 +99,12 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 
 **`Plan`.** For the whole source first: during a block nothing is due, forced or not (D38); when the wait has ended, one probe. Then per row, in order:
 
-1. Claimed by a process less than 20 seconds ago: not due. A forced refresh also skips a row claimed or attempted less than 5 seconds ago (C6).
+1. Claimed by a process less than 20 seconds ago: not due. A forced refresh also skips a row attempted less than 5 seconds ago (C6). A claim or attempt stamped later than now is ignored.
 2. Not found: due only an hour after the last attempt, or when the config file is newer than that attempt (D39, C8). A forced refresh does not override this.
 3. Forced: due.
 4. After failures: not due until the last attempt plus interval × 2^(failures−1), at most 30 minutes (D50).
 5. No quote: due, whatever the market (D50).
-6. The market is open: due when the last success is one interval old (D14).
+6. The market is open: due when the last success is more than one interval old (D14, D23).
 7. After the close, before the next open, on a holiday: **provisional, waits on Q62** (see section 7).
 8. Otherwise not due (D15).
 
@@ -124,7 +126,7 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 - **Serves:** QR4, S13.2, S13.3, S13.16, S15.
 - **Rejected:** a lock held across the fetch (a `print` with another watchlist prints old quotes without fetching; a stopped holder freezes every caller: `critique-converged-codex-2.md`, finding 3). No lock (two writers can erase failure counts or a block: `rebuttal-extensible.md`).
 - **Consequence:** two processes with different watchlists can fetch at the same time. A row claimed by a process that then dies is not fetched by anyone for 20 seconds.
-- **Risk accepted:** this combination was chosen after the last attack round and was not attacked as a whole.
+- **Risk accepted:** the protocol was attacked once, in the third round, which found three fatal and six serious faults in it as first written. The rules that answer them are in "The refresh protocol in detail" below; those rules have not been attacked.
 
 ### One ticker per provider call (D55)
 
@@ -139,6 +141,19 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 - **Serves:** QR5, S7.3–S7.5, S13.10.
 - **Rejected:** keeping it in the quote cache (`critique-converged-codex-2.md`, finding 2: an emptied or replaced cache forgets the block).
 - **Consequence:** the two files can disagree for the instant between two writes; a reader that sees a quote without its block makes at most one extra probe.
+
+### The refresh protocol in detail (D54, D56; after the third attack)
+
+Added after `research/design/critique-design-codex-3.md`. Each rule names the finding it answers.
+
+1. **The lock is never waited on for long.** It is tried without blocking, again every 50 milliseconds, for at most one second. If it is not obtained, the cycle ends: `print` prints what it read, the view tries again at the next heartbeat (finding 3).
+2. **A claim has an owner.** A round draws a random claim id and writes it with the time on every row it claims. At commit, a result is applied to a row only if the row is still in the file with that same claim id. A row that was re-claimed by another process, or removed, is left as it is (finding 2).
+3. **A commit releases every claim of its round,** including rows the deadline cut off before they were requested, so those are due at the next heartbeat (finding 7, D62).
+4. **A worker looks at the source file before it sends each request,** without the lock. A block that another process saved in the meantime ends the round, so rows claimed before a refusal are not requested after it (finding 1, QR5).
+5. **A refusal is in the cache as well as in the source file.** A refused row records the kind of its failure. If the source file is missing, empty or shows no block while a wanted row was refused less than five minutes ago, the source is treated as blocked until five minutes after that attempt. The view never drops a block it holds in memory because of an empty read; only a record with a later `UpdatedAt` replaces it (finding 4).
+6. **The probe.** When a block's wait has ended, one process claims the probe in the source file; the claim expires after 20 seconds. The probe asks for the first wanted row that has a quote, or else the first that is not not-found; with neither, there is no probe until a row comes due by its own rule. Outcomes: a refusal doubles the wait once; any other answer from the source (a quote, or not found) clears the block and the refusal count; no usable answer (timeout, connection error, server error, unreadable body) keeps the count and sets the next attempt one interval ahead. A probe's result is dropped if the record was updated after the probe was claimed (finding 5).
+7. **Merging two copies of a row** (disk and memory, in the view): the quote and its fetch time come from the copy with the later successful fetch; the last attempt, the failure and the failure count come from the copy with the later attempt. A row with a quote and a later failed attempt is therefore the old price, stale, aged from its last success (finding 8, spec 6.2).
+8. **Clocks.** A stamp in the future is void: a claim is ignored, a block that ends more than 30 minutes ahead is cut to 30 minutes. A clock that jumps forward can end a block early; the cost is one probe. In the view, reloading a changed config retries not-found rows whatever the file's modification time; `print` has only the modification time (finding 9).
 
 ### No step layer (D57) and Bubble Tea 2 (D58)
 
@@ -173,6 +188,9 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 | The config is edited while the view is open | The heartbeat's `stat` sees a new stamp; a command parses the file. Valid: removed rows go, added rows have no quote and are due, not-found rows are due because the file is newer than their last attempt. Invalid: the old config stays and the error line names the problem | S8.4, S11.3–S11.6, S11.10, S11.11 |
 | The cache file is emptied | A lock-free load returns nothing, silently. The view keeps what it shows and writes it back at its next commit. A `print` alone finds every row due and fetches once. The block record is in the other file and survives | S15.4, S15.7, QR5 |
 | A process is killed in the middle of a round | Its claims expire after 20 seconds and the rows become due again. Nothing is recorded as a failure. A refusal it had already seen is on disk | S13.3, QR5 |
+| Two processes hold claims when a third is refused | The third saves the block. The other two read the source file before each request, see the block and end their rounds; their commits release their claims | QR5 |
+| A process stops after fetching and resumes after another process refreshed the same row | Its commit finds a different claim id on the row and leaves the newer quote alone | S15, 6.2 |
+| A process is stopped while it holds the lock | Others try the lock for one second, then go on without it: `print` prints the cache, the view retries at the next heartbeat | S13.9 |
 | The cache folder cannot be written | The view warns once and paces itself from memory. `print` prints what it can read, without fetching, and warns | S15.5 (view), S15.8, QR4 |
 
 ## 6. Dependencies
@@ -191,7 +209,9 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 |---|---|---|
 | **Close, open and holidays (Q62, open).** The provisional rule: refresh for a settle window after the close (30 minutes for B3, 5 for the others); check again at the predicted next open, and every 5 minutes for 30 minutes if the answer still carries the old session. It rests on F14 and costs up to 7 requests per row on a holiday, where spec 6.1 says none | The holiday check on 2026-11-26; a measurement of when B3's closing quote arrives; a day with a late opening (F26) | Rule 7 of `Plan`, `MarketState`, and possibly the spec's 6.1 |
 | **The settle window is too short for B3 (F30).** On 2026-11-23 the quote time of a B3 ticker was 65 minutes past the session end the source reports | A watch of one B3 ticker from 19:30 to 21:45 UTC on a trading day | The settle window in rule 7 and the 30 minutes of D50 (P31), through Q62 |
-| The claim-and-commit protocol of D54 was not attacked as a whole | A test with two processes and a stand-in source that counts requests; a process killed between claim and commit | `engine.Cycle` |
+| The rules of "The refresh protocol in detail" were written after the last attack round and were not attacked | Tests with two and three processes against a counting stand-in source: a process killed between claim and commit, stopped inside the lock, refused while others hold claims | `engine.Cycle` |
+| **Two watchlists at once are not supported (D68, accepted).** With one shared cache, two `print` loops on different configs prune each other's rows at every commit and refetch them at every call: up to about 3,300 requests in ten minutes for 23 entries (F31). Nothing in the tool prevents it | A block by the source while two configs are in use | A cache per config file, or a way to print one group, would remove it; neither is designed |
+| A process killed between receiving a refusal and writing it, twice in a row, lets a second and third round start: up to 8 requests each, above QR5's 10 | Not testable short of fault injection | Accepted; the window is the few milliseconds of one write |
 | Only 401, 403 and 429 count as a refusal. A 404 with a JSON "Not Found" error is an unknown ticker (F27) | A refusal that arrives as 200 with an error body, or as a 404 without that body (backlog) | `provider/yahoo`, and the count under QR5 |
 | The numbers of C16 | QR11 and S13.9 measured against a slow stand-in | Constants in `engine` |
 | A config edit that keeps size, inode and modification time is not seen; one that keeps an older modification time is reloaded but does not retry not-found rows | A test that replaces the file with `cp -p` | The stamp, or C8's rule |
@@ -202,6 +222,7 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 - A second data source, a router between sources, and API-key handling (D53, C10).
 - Any user setting for the source, including how the tool identifies itself (D50, C12).
 - Windows (D59).
+- Two different watchlists running at the same time: one shared cache, one watchlist at a time (D61, D68).
 - A step layer for the view (D57); alerts, a detail view, in-app editing and a portfolio, which were its reasons (D3, D12, D13).
 - A market calendar (D15 is met from the data fetched; see Q62).
 - Wiring into `the-2026-dev-env` and the install step, which are delivery work (D34, D36).
