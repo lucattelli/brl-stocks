@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: draft, 2026-11-24. Approved on 2026-11-23 (D72) and updated on 2026-11-24 for D73 and D74; then given surface tags on every criterion, the new story S18 and the criterion S17.4; P53–P55 settled as D75–D77. Waiting on approval. Earlier approvals: D52, D67. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D77, facts F1–F35).
+Status: approved, 2026-11-24 (D78), as updated with surface tags on every criterion, S17.4, S18 and D75–D77. Earlier approvals: D52, D67, D72. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D78, facts F1–F35).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -907,3 +907,4 @@ Every decision in the log, and where the spec realises it.
 | D75 | 7.4, S1.7 |
 | D76 | 6.3, 7.4, 8 (surfaces), S6.9, S7.4 |
 | D77 | 7, 7.1, S18 |
+| D78 | process (approval of this spec, as updated) |
