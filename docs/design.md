@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: approved, 2026-11-23 (D69). First approved as D63, then changed after a third attack round on the refresh protocol (section 4, "The refresh protocol in detail") and for D68. Open (section 7): Q62, and the protocol rules that no critic attacked.
-Sources: `research/grilling-log.md` (decisions D1–D69, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
+Status: draft, 2026-11-23. Approved as D69; changed since for D70 (a testing-only address for the source) and for two protocol rules that the Quint model surfaced (rules 6 and 9 of "The refresh protocol in detail"). It waits on the user's approval. Open (section 7): Q62, and the protocol rules that no critic attacked.
+Sources: `research/grilling-log.md` (decisions D1–D70, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
@@ -80,6 +80,7 @@ type Health struct {        // one per source name, in the source file
     Refusals     int
     ProbeClaimedAt time.Time  // expires after 20 seconds, like a row's claim
     UpdatedAt    time.Time    // when this record was last written; the later record wins
+    Gen          int          // goes up by one at every write of the record
 }
 func Plan(in PlanInput) PlanResult      // Want, Snap, Health, Interval, Now, ConfigMTime, Force → Due, Probe, NextTry
 func MarketState(m Market, s Snapshot, now time.Time) (open, known bool)
@@ -151,9 +152,20 @@ Added after `research/design/critique-design-codex-3.md`. Each rule names the fi
 3. **A commit releases every claim of its round,** including rows the deadline cut off before they were requested, so those are due at the next heartbeat (finding 7, D62).
 4. **A worker looks at the source file before it sends each request,** without the lock. A block that another process saved in the meantime ends the round, so rows claimed before a refusal are not requested after it (finding 1, QR5).
 5. **A refusal is in the cache as well as in the source file.** A refused row records the kind of its failure. If the source file is missing, empty or shows no block while a wanted row was refused less than five minutes ago, the source is treated as blocked until five minutes after that attempt. The view never drops a block it holds in memory because of an empty read; only a record with a later `UpdatedAt` replaces it (finding 4).
-6. **The probe.** When a block's wait has ended, one process claims the probe in the source file; the claim expires after 20 seconds. The probe asks for the first wanted row that has a quote, or else the first that is not not-found; with neither, there is no probe until a row comes due by its own rule. Outcomes: a refusal doubles the wait once; any other answer from the source (a quote, or not found) clears the block and the refusal count; no usable answer (timeout, connection error, server error, unreadable body) keeps the count and sets the next attempt one interval ahead. A probe's result is dropped if the record was updated after the probe was claimed (finding 5).
+6. **The probe.** When a block's wait has ended, one process claims the probe in the source file; the claim expires after 20 seconds. The probe asks for the first wanted row that has a quote, or else the first that is not not-found; with neither, there is no probe until a row comes due by its own rule. Outcomes: a refusal doubles the wait once; any other answer from the source (a quote, or not found) clears the block and the refusal count; no usable answer (timeout, connection error, server error, unreadable body) keeps the count and sets the next attempt one interval ahead. The record carries a counter that goes up at every write. A probe remembers the counter's value from its own claim, and its success clears the block only if the counter still has that value; two events in the same instant cannot be told apart by their time stamps (finding 5; the counter comes from the model).
 7. **Merging two copies of a row** (disk and memory, in the view): the quote and its fetch time come from the copy with the later successful fetch; the last attempt, the failure and the failure count come from the copy with the later attempt. A row with a quote and a later failed attempt is therefore the old price, stale, aged from its last success (finding 8, spec 6.2).
 8. **Clocks.** A stamp in the future is void: a claim is ignored, a block that ends more than 30 minutes ahead is cut to 30 minutes. A clock that jumps forward can end a block early; the cost is one probe. In the view, reloading a changed config retries not-found rows whatever the file's modification time; `print` has only the modification time (finding 9).
+
+9. **Only a refused probe lengthens the wait.** A refusal of a request that was sent before the block was known is recorded on its row and leaves the wait as it is. Otherwise eight requests refused together in one round would take the wait from 5 minutes straight to the 30-minute limit (from the model).
+
+The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a newer quote is never replaced by an older one; a removed row never gets a quote again; a probe never clears a block saved after it started; two processes fetch the same row only after the older claim expired; the wait grows only on refused probes; requests stay bounded while the source keeps refusing.
+
+### A testing-only address for the source (D70)
+
+- **Chosen:** when the environment variable `BRL_STOCKS_SOURCE_URL` is set, the default source is reached at that address instead of its own. It is absent from the help text.
+- **Serves:** verification of the built binary against a local stand-in that stages answers and counts requests (QR4, QR5, S7, S8, S13).
+- **Rejected:** a data file passed as an argument (static, counts nothing, skips the network code); a separate test build (not the shipped binary); the real source only (failures cannot be staged).
+- **Consequence:** the rule against redirects to another host (QR12) applies to the address in use. Acceptance tests inside the code keep injecting the source through `Deps`; this setting is for runs of the real binary.
 
 ### No step layer (D57) and Bubble Tea 2 (D58)
 
@@ -209,7 +221,7 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 |---|---|---|
 | **Close, open and holidays (Q62, open).** The provisional rule: refresh for a settle window after the close (30 minutes for B3, 5 for the others); check again at the predicted next open, and every 5 minutes for 30 minutes if the answer still carries the old session. It rests on F14 and costs up to 7 requests per row on a holiday, where spec 6.1 says none | The holiday check on 2026-11-26; a measurement of when B3's closing quote arrives; a day with a late opening (F26) | Rule 7 of `Plan`, `MarketState`, and possibly the spec's 6.1 |
 | **The settle window is too short for B3 (F30).** On 2026-11-23 the quote time of a B3 ticker was 65 minutes past the session end the source reports | A watch of one B3 ticker from 19:30 to 21:45 UTC on a trading day | The settle window in rule 7 and the 30 minutes of D50 (P31), through Q62 |
-| The rules of "The refresh protocol in detail" were written after the last attack round and were not attacked | Tests with two and three processes against a counting stand-in source: a process killed between claim and commit, stopped inside the lock, refused while others hold claims | `engine.Cycle` |
+| The rules of "The refresh protocol in detail" were written after the last attack round and were not attacked by a critic. The Quint model checks six properties of them: exhaustively for every run of up to 19 steps with two processes, without a violation; the complete state space and three processes are not yet covered | Tests with two and three processes against a counting stand-in source: a process killed between claim and commit, stopped inside the lock, refused while others hold claims. The model run to completion | `engine.Cycle` |
 | **Two watchlists at once are not supported (D68, accepted).** With one shared cache, two `print` loops on different configs prune each other's rows at every commit and refetch them at every call: up to about 3,300 requests in ten minutes for 23 entries (F31). Nothing in the tool prevents it | A block by the source while two configs are in use | A cache per config file, or a way to print one group, would remove it; neither is designed |
 | A process killed between receiving a refusal and writing it, twice in a row, lets a second and third round start: up to 8 requests each, above QR5's 10 | Not testable short of fault injection | Accepted; the window is the few milliseconds of one write |
 | Only 401, 403 and 429 count as a refusal. A 404 with a JSON "Not Found" error is an unknown ticker (F27) | A refusal that arrives as 200 with an error body, or as a 404 without that body (backlog) | `provider/yahoo`, and the count under QR5 |

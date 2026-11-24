@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D67), and updated the same day for D68. First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D68, facts F1–F31).
+Status: approved, 2026-11-23 (D67), and updated the same day for D68 and D70. First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D70, facts F1–F31).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -252,6 +252,8 @@ All values in the examples are illustrative.
 | `--help`, `--version` | Print usage or the version and exit with status 0 | D50 |
 
 An unknown command or flag prints a usage message to the error stream and exits with status 2 (D50).
+
+For testing only: when the environment variable `BRL_STOCKS_SOURCE_URL` is set, the default source is reached at that address. It does not appear in the help text and selects no other source (D70).
 
 ### 7.2 The config file
 
@@ -848,3 +850,5 @@ Every decision in the log, and where the spec realises it.
 | D66 | 7.3, 7.5, S1.12–S1.15, S14.12 |
 | D67 | process (approval of this spec as updated) |
 | D68 | 2 (non-goals) |
+| D69 | process (approval of the design document) |
+| D70 | 7.1; its use is design (section 10 and `docs/design.md`) |
