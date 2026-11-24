@@ -239,6 +239,7 @@ type env struct {
 	src         *standin
 	sourceURL   string
 	noCacheHome bool // leave XDG_CACHE_HOME unset
+	noCfgHome   bool // leave XDG_CONFIG_HOME unset
 	mu          sync.Mutex
 	ev          strings.Builder
 }
@@ -329,8 +330,10 @@ func (e *env) environ() []string {
 		"TZ=UTC",
 		"HOME=" + e.home,
 		"TMPDIR=" + e.tmpDir,
-		"XDG_CONFIG_HOME=" + e.cfgHome,
 		"BRL_STOCKS_SOURCE_URL=" + e.sourceURL,
+	}
+	if !e.noCfgHome {
+		v = append(v, "XDG_CONFIG_HOME="+e.cfgHome)
 	}
 	if !e.noCacheHome {
 		v = append(v, "XDG_CACHE_HOME="+e.cacheHome)
@@ -1632,90 +1635,12 @@ func runTen(e *env, args ...string) []result {
 	return res
 }
 
-// Several processes at once (6.5 "waits and blocks are shared", QR4): ten
-// `print` calls started at the same moment on an empty cache, healthy source.
-// The spec states no number for this case. Asserted here:
-//   - every one of the ten calls prints quotes (6.5: "No quote in the cache:
-//     fetches"; a healthy source and an open market give no reason for a row
-//     without data), and with --json reports state `ok`;
-//   - no instrument is requested more than twice (QR4 allows one request per
-//     entry per interval "and half as many again for overlap between
-//     instances").
-//
-// The per-instrument counts are logged; they are the finding.
-// Not parallel, so that the ten processes are not slowed by other checks.
-func TestVerifyConcurrency_TenPrintsOnEmptyCache(t *testing.T) {
-	t.Run("table", func(t *testing.T) {
-		e := newEnv(t, "6.5 / QR4: ten `print` at the same moment, empty cache", baseConfig)
-		res := runTen(e, "print")
-		without := 0
-		for i, r := range res {
-			if r.exit != 0 {
-				e.failf("process %d: exit status %d", i+1, r.exit)
-			}
-			missing := 0
-			for _, tk := range tickers {
-				if ls := rowLines(r.stdout, tk); len(ls) != 1 || !hasQuote(ls[0]) {
-					missing++
-				}
-			}
-			if missing > 0 {
-				without++
-				e.failf("process %d: %d of %d rows show no quote; its output ends with %q", i+1, missing, len(tickers), lastLine(r.stdout))
-			}
-		}
-		tenCounts(e, without)
-	})
-	t.Run("json", func(t *testing.T) {
-		e := newEnv(t, "6.5 / QR4: ten `print --json` at the same moment, empty cache", baseConfig)
-		res := runTen(e, "print", "--json")
-		without := 0
-		states := map[string]int{}
-		for i, r := range res {
-			if r.exit != 0 {
-				e.failf("process %d: exit status %d", i+1, r.exit)
-			}
-			doc := parseDoc(e, r.stdout)
-			if doc == nil {
-				continue
-			}
-			states[fmt.Sprint(doc["state"])]++
-			if doc["state"] != "ok" {
-				without++
-				st := map[string]int{}
-				for _, rw := range docRows(doc) {
-					st[fmt.Sprint(rw["status"])]++
-				}
-				e.failf("process %d: want state \"ok\", got %v (row statuses: %s, error: %v)", i+1, doc["state"], fmtCounts(st), doc["error"])
-			}
-		}
-		e.logf("\nSTATES REPORTED BY THE TEN PROCESSES: %s\n", fmtCounts(states))
-		t.Logf("states reported by the ten processes: %s", fmtCounts(states))
-		tenCounts(e, without)
-	})
-}
-
 func lastLine(s string) string {
 	ls := lines(s)
 	if len(ls) == 0 {
 		return ""
 	}
 	return ls[len(ls)-1]
-}
-
-func tenCounts(e *env, without int) {
-	e.t.Helper()
-	c := bySymbol(e.src.requests())
-	e.logf("\nPROCESSES WITHOUT QUOTES: %d of 10\nREQUESTS PER INSTRUMENT, TEN PROCESSES TOGETHER: %s\n", without, fmtCounts(c))
-	e.t.Logf("processes without quotes: %d of 10; requests per instrument, ten processes together: %s", without, fmtCounts(c))
-	for _, s := range allSyms {
-		if c[s] == 0 {
-			e.failf("%s was never requested", s)
-		}
-		if c[s] > 2 {
-			e.failf("%s: ten simultaneous calls led to %d requests (QR4 allows one per interval and half as many again)", s, c[s])
-		}
-	}
 }
 
 // 6.3 (not a numbered criterion): "Normal | The source refuses a request |
@@ -1905,4 +1830,561 @@ func TestVerifySlow_W6_3_RecoveryAfterBlock(t *testing.T) {
 	if n := len(linesWithPrefix(r2.stderr, "source ")); n != 0 {
 		e.failf("after recovery the error line should be gone; error stream: %q", r2.stderr)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// S13.22, S13.23 (D73), S13.24 (D74)
+// ---------------------------------------------------------------------------
+
+var (
+	rowSyms = []string{"PETR4.SA", "AAPL", "VALE3.SA", "ITUB4.SA", "MSFT"} // the watchlist lines of baseConfig
+	sumSyms = []string{"^BVSP", "^GSPC", "BRL=X"}                           // the summary entries
+)
+
+// S13.22 Given an empty cache and a source that answers, when ten `brl-stocks
+// print` calls are started at the same moment, then every one of them prints a
+// quote for each row.
+// S13.23 Given the same, then the source receives one request per row.
+// A row is a watchlist line (glossary); the summary entries are not rows, and
+// their counts are reported, not asserted. Table and JSON. Not parallel, so
+// that the ten processes are not slowed by other checks.
+func TestVerifyS13_22_23_TenPrintsOnEmptyCache(t *testing.T) {
+	for _, mode := range []string{"table", "json"} {
+		t.Run(mode, func(t *testing.T) {
+			args := []string{"print"}
+			if mode == "json" {
+				args = append(args, "--json")
+			}
+			e := newEnv(t, "S13.22, S13.23: ten `"+strings.Join(args, " ")+"` at the same moment, empty cache, healthy source", baseConfig)
+			res := runTen(e, args...)
+			without := 0
+			for i, r := range res {
+				if r.exit != 0 {
+					e.failf("process %d: exit status %d", i+1, r.exit)
+				}
+				var missing []string
+				if mode == "table" {
+					for _, tk := range tickers {
+						if ls := rowLines(r.stdout, tk); len(ls) != 1 || !hasQuote(ls[0]) {
+							missing = append(missing, tk)
+						}
+					}
+					e.logf("process %d: summary line %q\n", i+1, firstLine(r.stdout))
+				} else if doc := parseDoc(e, r.stdout); doc != nil {
+					rows := docRows(doc)
+					for _, tk := range tickers {
+						if rw, ok := rows[tk]; !ok || rw["price"] == nil {
+							missing = append(missing, tk)
+						}
+					}
+					e.logf("process %d: state %v, summary %v\n", i+1, doc["state"], summaryStatuses(doc))
+				}
+				if len(missing) > 0 {
+					without++
+					e.failf("S13.22: process %d: rows without a quote: %v; its output ends with %q", i+1, missing, lastLine(r.stdout))
+				}
+			}
+			c := bySymbol(e.src.requests())
+			rc, sc := map[string]int{}, map[string]int{}
+			for _, s := range rowSyms {
+				rc[s] = c[s]
+			}
+			for _, s := range sumSyms {
+				sc[s] = c[s]
+			}
+			e.logf("\nPROCESSES WITH A ROW WITHOUT A QUOTE: %d of 10\nREQUESTS PER ROW, TEN PROCESSES TOGETHER: %s\nREQUESTS PER SUMMARY ENTRY: %s\nALL: %s\n",
+				without, fmtCounts(rc), fmtCounts(sc), fmtCounts(c))
+			t.Logf("rows: %s; summary entries: %s", fmtCounts(rc), fmtCounts(sc))
+			for _, s := range rowSyms {
+				if c[s] != 1 {
+					e.failf("S13.23: want exactly 1 request for the row %s, the stand-in received %d", s, c[s])
+				}
+			}
+		})
+	}
+}
+
+func firstLine(s string) string {
+	if ls := lines(s); len(ls) > 0 {
+		return ls[0]
+	}
+	return ""
+}
+
+func summaryStatuses(doc map[string]any) string {
+	m := map[string]int{}
+	ss, _ := doc["summary"].([]any)
+	for _, s := range ss {
+		if sm, ok := s.(map[string]any); ok {
+			m[fmt.Sprintf("%v:%v", sm["id"], sm["status"])]++
+		}
+	}
+	return fmtCounts(m)
+}
+
+// S13.24 Given no cache and a source that cannot be reached, when `brl-stocks
+// print` is run, then the last line of the output reads `B3 unknown · US
+// unknown`. Two variants: no connection, status 503.
+func TestVerifyS13_24_NoCacheUnreachableMarketsUnknown(t *testing.T) {
+	t.Parallel()
+	for _, v := range unreachableVariants {
+		t.Run(v, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, "S13.24 ["+v+"]", baseConfig)
+			if v == "status 503" {
+				e.setSource(state{Status: 503}, "every request answered 503")
+			} else {
+				e.logf("\nSTAND-IN   stopped: its address now refuses connections\n")
+				e.src.stop()
+			}
+			r := e.run("print")
+			e.wantExit(r, 0)
+			if got := lastLine(r.stdout); got != "B3 unknown · US unknown" {
+				e.failf("want the last line `B3 unknown · US unknown`, got %q", got)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Not-found rows in `print` (6.5 row 1, 6.2, 7.3, 7.6)
+// ---------------------------------------------------------------------------
+
+// 6.5 "Not found, tried less than an hour ago, config unchanged | No fetch;
+// prints not found" (before the forced-fetch row); 7.3 "Not found: not found
+// in place of the price; — in the other data columns", "Not-found rows do not
+// raise" the error line; 7.6 a not-found row makes the state `partial`; 6.2
+// "Not found | ... or the config changes | ... The ticker is tried again".
+// The stand-in answers 404 for XXXX9.SA (B3 tickers are requested with .SA, as
+// every other check's record shows).
+func TestVerifyW6_5_NotFoundRow(t *testing.T) {
+	t.Parallel()
+	cfg := "refresh_seconds = 10\ntickers = [\"PETR4\", \"XXXX9\", \"AAPL\"]\n"
+	e := newEnv(t, "6.5 row 1, 7.3 Not found, 6.2 Not found rows", cfg)
+	e.setSource(state{SymbolStatus: map[string]int{"XXXX9.SA": 404}}, "XXXX9.SA answered 404")
+
+	r1 := e.run("print")
+	e.wantExit(r1, 0)
+	if bySymbol(r1.reqs)["XXXX9.SA"] == 0 {
+		t.Fatalf("set-up: the tool did not request XXXX9.SA (requested: %s)", fmtCounts(bySymbol(r1.reqs)))
+	}
+	nf := func(r result, when string) {
+		e.t.Helper()
+		l := row(e, r.stdout, "XXXX9")
+		if !strings.Contains(l, "not found") || hasQuote(l) {
+			e.failf("%s: want `not found` in place of the price, got %q", when, l)
+		}
+		dashes := 0
+		for _, f := range strings.Fields(l) {
+			if f == "—" {
+				dashes++
+			}
+		}
+		if dashes != 6 {
+			e.failf("%s: want `—` in the 6 other data columns (name, change, percent, low, high, time), got %d in %q", when, dashes, l)
+		}
+		for _, tk := range []string{"PETR4", "AAPL"} {
+			if l := row(e, r.stdout, tk); !hasQuote(l) {
+				e.failf("%s: other rows are unaffected: row %s shows no quote: %q", when, tk, l)
+			}
+		}
+		if n := linesWithPrefix(r.stderr, "source "); len(n) != 0 {
+			e.failf("%s: not-found rows do not raise the error line; error stream: %q", when, r.stderr)
+		}
+	}
+	nf(r1, "first print")
+
+	rj := e.run("print", "--json")
+	e.wantExit(rj, 0)
+	if doc := parseDoc(e, rj.stdout); doc != nil {
+		rw := docRows(doc)["XXXX9"]
+		if rw == nil || rw["status"] != "not_found" || rw["price"] != nil {
+			e.failf("JSON: want XXXX9 with status not_found and price null, got %v", rw)
+		}
+		if doc["state"] != "partial" {
+			e.failf("7.6: a not-found row makes the state `partial`, got %v", doc["state"])
+		}
+	}
+
+	e.sleep(pastInterval, "the other rows' cache becomes older than the interval")
+	r2 := e.run("print")
+	e.wantExit(r2, 0)
+	e.wantNotRequested(r2, []string{"XXXX9.SA"}, "6.5 row 1: not found less than an hour ago")
+	e.wantRequested(r2, []string{"PETR4.SA", "AAPL"}, "control: the other rows are older than the interval")
+	nf(r2, "print after one interval")
+
+	e.sleep(6*time.Second, "past the 5 seconds of 6.5 row 3")
+	r3 := e.run("print", "--refresh")
+	e.wantExit(r3, 0)
+	e.wantNotRequested(r3, []string{"XXXX9.SA"}, "6.5 row 1 comes before the forced fetch: `print --refresh`")
+	nf(r3, "print --refresh")
+
+	cfg2 := strings.Replace(cfg, `"AAPL"]`, `"AAPL", "MSFT"]`, 1)
+	e.logf("\nCONFIG CHANGED (MSFT added)\n%s\n", indent(cfg2))
+	if err := os.WriteFile(e.cfgPath, []byte(cfg2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r4 := e.run("print")
+	e.wantExit(r4, 0)
+	if bySymbol(r4.reqs)["XXXX9.SA"] != 1 {
+		e.failf("6.2 / 6.5: after the config changed, want XXXX9 tried again (1 request), got %d", bySymbol(r4.reqs)["XXXX9.SA"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S3 Two markets, plain tickers, own currency
+// ---------------------------------------------------------------------------
+
+// S3.1 PETR4 is the B3 instrument, priced in R$. S3.2 PETR4F, MXRF11 and
+// AAPL34 are B3. S3.3 AAPL, MSFT and F are US, priced in US$. S3.4 US:ABCD1 is
+// US. S3.5 B3:XYZ is B3. Observed: the JSON `market` and `currency` of each row,
+// and the currency symbol in the table. 7.2: rows show the code without a
+// market prefix.
+func TestVerifyS3_01_05_MarketOfATicker(t *testing.T) {
+	t.Parallel()
+	cfg := `tickers = ["PETR4", "PETR4F", "MXRF11", "AAPL34", "AAPL", "MSFT", "F", "US:ABCD1", "B3:XYZ"]` + "\n"
+	e := newEnv(t, "S3.1-S3.5", cfg)
+	type want struct{ crit, shown, market, currency, sign string }
+	ws := []want{
+		{"S3.1", "PETR4", "B3", "BRL", "R$"},
+		{"S3.2", "PETR4F", "B3", "BRL", "R$"},
+		{"S3.2", "MXRF11", "B3", "BRL", "R$"},
+		{"S3.2", "AAPL34", "B3", "BRL", "R$"},
+		{"S3.3", "AAPL", "US", "USD", "US$"},
+		{"S3.3", "MSFT", "US", "USD", "US$"},
+		{"S3.3", "F", "US", "USD", "US$"},
+		{"S3.4", "ABCD1", "US", "USD", "US$"},
+		{"S3.5", "XYZ", "B3", "BRL", "R$"},
+	}
+	rj := e.run("print", "--json")
+	e.wantExit(rj, 0)
+	rows := map[string]map[string]any{}
+	if doc := parseDoc(e, rj.stdout); doc != nil {
+		rows = docRows(doc)
+	}
+	r := e.run("print")
+	e.wantExit(r, 0)
+	for _, w := range ws {
+		rw := rows[w.shown]
+		if rw == nil {
+			e.failf("%s: JSON: no row with ticker %q (tickers: %v)", w.crit, w.shown, keys(rows))
+		} else if rw["market"] != w.market || rw["currency"] != w.currency {
+			e.failf("%s: %s: want market %s, currency %s; got %v, %v", w.crit, w.shown, w.market, w.currency, rw["market"], rw["currency"])
+		}
+		ls := rowLines(r.stdout, w.shown)
+		if len(ls) != 1 {
+			e.failf("%s / 7.2: want one table row shown as %q (without a market prefix), found %d", w.crit, w.shown, len(ls))
+			continue
+		}
+		if !strings.Contains(ls[0], w.sign+" ") {
+			e.failf("%s: table row %s: want a price in %s, got %q", w.crit, w.shown, w.sign, ls[0])
+		}
+	}
+	e.logf("\nSYMBOLS REQUESTED: %s\n", fmtCounts(bySymbol(e.src.requests())))
+}
+
+func keys(m map[string]map[string]any) []string {
+	var k []string
+	for x := range m {
+		k = append(k, x)
+	}
+	sort.Strings(k)
+	return k
+}
+
+// S3.7 Given the ticker written as `petr4`, when the row is drawn, then it
+// shows `PETR4`. (In `print`, table and JSON.)
+func TestVerifyS3_07_LowerCaseTickerShownUpper(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S3.7", "tickers = [\"petr4\"]\n")
+	r := e.run("print")
+	e.wantExit(r, 0)
+	if l := row(e, r.stdout, "PETR4"); !hasQuote(l) {
+		e.failf("want a row `PETR4` with a quote, got %q", l)
+	}
+	if n := len(rowLines(r.stdout, "petr4")); n != 0 {
+		e.failf("the row is drawn as `petr4`")
+	}
+	rj := e.run("print", "--json")
+	if doc := parseDoc(e, rj.stdout); doc != nil {
+		if _, ok := docRows(doc)["PETR4"]; !ok {
+			e.failf("JSON: no row with ticker PETR4 (tickers: %v)", keys(docRows(doc)))
+		}
+	}
+}
+
+// S4.4 Given the same ticker in two groups, when a refresh runs, then the
+// ticker is requested from the source once. 7.2: shown in both groups.
+// Both an ordinary refresh (empty cache) and a forced one.
+func TestVerifyS4_04_TickerInTwoGroupsFetchedOnce(t *testing.T) {
+	t.Parallel()
+	cfg := "[[group]]\nname = \"A\"\ntickers = [\"PETR4\", \"AAPL\"]\n\n[[group]]\nname = \"B\"\ntickers = [\"VALE3\", \"PETR4\"]\n"
+	e := newEnv(t, "S4.4", cfg)
+	r1 := e.run("print")
+	e.wantExit(r1, 0)
+	e.wantRequested(r1, []string{"PETR4.SA"}, "S4.4 first refresh")
+	if ls := rowLines(r1.stdout, "PETR4"); len(ls) != 2 || !hasQuote(ls[0]) || !hasQuote(ls[1]) {
+		e.failf("7.2: want PETR4 shown with a quote in both groups, got %q", ls)
+	}
+	e.sleep(6*time.Second, "past the 5 seconds of 6.5 row 3")
+	r2 := e.run("print", "--refresh")
+	e.wantExit(r2, 0)
+	e.wantRequested(r2, []string{"PETR4.SA"}, "S4.4 forced refresh")
+}
+
+// ---------------------------------------------------------------------------
+// S11 The watchlist is a file I edit
+// ---------------------------------------------------------------------------
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// wantWatchlist checks that exactly the given tickers have rows with quotes,
+// among the tickers named in any config of the check.
+func wantWatchlist(e *env, out string, shown, notShown []string, what string) {
+	e.t.Helper()
+	for _, tk := range shown {
+		if ls := rowLines(out, tk); len(ls) != 1 || !hasQuote(ls[0]) {
+			e.failf("%s: want a row %s with a quote, got %q", what, tk, ls)
+		}
+	}
+	for _, tk := range notShown {
+		if ls := rowLines(out, tk); len(ls) != 0 {
+			e.failf("%s: want no row %s (it belongs to another watchlist), got %q", what, tk, ls)
+		}
+	}
+}
+
+// S11.1 Given a valid file at `~/.config/brl-stocks/config.toml` and no
+// `--config` flag, when the tool starts, then it shows that file's watchlist.
+// XDG_CONFIG_HOME unset; HOME temporary.
+func TestVerifyS11_01_DefaultPathUnderHome(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S11.1 (XDG_CONFIG_HOME unset)", "")
+	e.noCfgHome = true
+	e.cfgPath = filepath.Join(e.home, ".config", "brl-stocks", "config.toml")
+	writeFile(t, e.cfgPath, "tickers = [\"ITUB4\", \"MSFT\"]\n")
+	r := e.run("print")
+	e.wantExit(r, 0)
+	wantWatchlist(e, r.stdout, []string{"ITUB4", "MSFT"}, []string{"PETR4", "VALE3", "AAPL"}, "S11.1")
+}
+
+// S11.2 Given `--config <other path>`, when the tool starts, then it shows the
+// watchlist of that file (and not the one at the default path). Both places of
+// the flag: before and after `print` (7.1: "On any command").
+func TestVerifyS11_02_ConfigFlag(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S11.2", baseConfig)
+	other := filepath.Join(e.root, "other.toml")
+	writeFile(t, other, "tickers = [\"ITUB4\"]\n")
+	sum := fileSum(other)
+	for _, args := range [][]string{{"--config", other, "print"}, {"print", "--config", other}} {
+		r := e.run(args...)
+		e.wantExit(r, 0)
+		wantWatchlist(e, r.stdout, []string{"ITUB4"}, []string{"PETR4", "AAPL", "VALE3", "MSFT"}, "S11.2 `"+strings.Join(args, " ")+"`")
+	}
+	if fileSum(other) != sum {
+		e.failf("S11.8: the file named by --config changed")
+	}
+}
+
+// S11.15 Given XDG_CONFIG_HOME and a valid file under it, when the tool starts
+// without `--config`, then it shows that file's watchlist (and not the one at
+// `~/.config`).
+func TestVerifyS11_15_XDGConfigHome(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S11.15", "tickers = [\"ITUB4\"]\n")
+	writeFile(t, filepath.Join(e.home, ".config", "brl-stocks", "config.toml"), "tickers = [\"MSFT\"]\n")
+	r := e.run("print")
+	e.wantExit(r, 0)
+	wantWatchlist(e, r.stdout, []string{"ITUB4"}, []string{"MSFT", "PETR4", "VALE3", "AAPL"}, "S11.15")
+}
+
+// S11.9 Given a config file that cannot be parsed, when the tool starts, then
+// it exits with status 2. S11.16 ... then a message on the error stream names
+// the file and the problem. 7.2 adds the other kinds of invalid config (wrong
+// type, unknown summary name, empty ticker), and 6.4: exit status 2. Also with
+// the file named by --config. Nothing is requested.
+func TestVerifyS11_09_16_InvalidConfig(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, cfg string }{
+		{"cannot be parsed", "tickers = [\"PETR4\"\nthis is not toml ===\n"},
+		{"wrong type", "refresh_seconds = \"ten\"\ntickers = [\"PETR4\"]\n"},
+		{"unknown summary name", "summary = [\"IBOV\", \"DAX\"]\ntickers = [\"PETR4\"]\n"},
+		{"empty ticker", "tickers = [\"PETR4\", \"\"]\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, "S11.9, S11.16, 7.2 ["+c.name+"]", c.cfg)
+			other := filepath.Join(e.root, "named.toml")
+			writeFile(t, other, c.cfg)
+			for _, v := range []struct {
+				path string
+				args []string
+			}{{e.cfgPath, []string{"print"}}, {other, []string{"--config", other, "print"}}} {
+				r := e.run(v.args...)
+				e.wantExit(r, 2)
+				e.wantNoRequests(r, "invalid config")
+				if !strings.Contains(r.stderr, v.path) {
+					e.failf("S11.16: want the error stream to name the file %s, got %q", v.path, r.stderr)
+				}
+				rest := strings.TrimSpace(strings.ReplaceAll(r.stderr, v.path, ""))
+				if len(rest) < 10 {
+					e.failf("S11.16: want the problem named beside the file, the error stream holds only %q", r.stderr)
+				}
+				e.logf("MESSAGE    %q\n", r.stderr)
+			}
+		})
+	}
+}
+
+// S11.12 Given a config with a key the tool does not know, when the tool
+// starts, then a warning names the key. S11.17 ... then the watchlist is
+// shown. 7.2: warnings go to the error stream in one-shot.
+func TestVerifyS11_12_17_UnknownKey(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S11.12, S11.17", "colour_scheme = \"dark\"\n"+baseConfig)
+	r := e.run("print")
+	e.wantExit(r, 0)
+	wantWatchlist(e, r.stdout, tickers, nil, "S11.17")
+	if !strings.Contains(r.stderr, "colour_scheme") {
+		e.failf("S11.12: want a warning naming `colour_scheme` on the error stream, got %q", r.stderr)
+	}
+	if strings.Contains(r.stdout, "colour_scheme") {
+		e.failf("7.4: the warning is on standard output; it belongs on the error stream")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S12 No config yet
+// ---------------------------------------------------------------------------
+
+// S12.1 Given no file at the default config path, when the tool starts, then
+// it shows a built-in example watchlist (7.7: PETR4, VALE3, ITUB4, AAPL, MSFT,
+// with the default summary line). S12.2 ... it names the path where a config
+// file belongs (on the error stream in one-shot). S12.3 ... when the tool has
+// run in any mode and exited, no file or folder has been created under the
+// config path. Two variants: XDG_CONFIG_HOME set, and unset (~/.config).
+// Modes: print, print --json, print --refresh.
+func TestVerifyS12_01_03_NoConfig(t *testing.T) {
+	t.Parallel()
+	example := []string{"PETR4", "VALE3", "ITUB4", "AAPL", "MSFT"}
+	for _, v := range []string{"XDG_CONFIG_HOME set", "XDG_CONFIG_HOME unset"} {
+		t.Run(v, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, "S12.1-S12.3 ["+v+"]", "")
+			base := e.cfgHome
+			if v == "XDG_CONFIG_HOME unset" {
+				e.noCfgHome = true
+				base = filepath.Join(e.home, ".config")
+				os.MkdirAll(base, 0o755)
+			}
+			e.cfgPath = filepath.Join(base, "brl-stocks", "config.toml")
+			if err := os.RemoveAll(filepath.Join(base, "brl-stocks")); err != nil {
+				t.Fatal(err)
+			}
+			list := func() string {
+				var b strings.Builder
+				filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
+					if p != base {
+						fmt.Fprintln(&b, strings.TrimPrefix(p, e.root))
+					}
+					return nil
+				})
+				return b.String()
+			}
+			before := list()
+			r := e.run("print")
+			e.wantExit(r, 0)
+			wantWatchlist(e, r.stdout, example, nil, "S12.1")
+			if !strings.HasPrefix(firstLine(r.stdout), "IBOV") {
+				e.failf("S12.1 / 7.7: want the default summary line first, got %q", firstLine(r.stdout))
+			}
+			if !strings.Contains(r.stderr, e.cfgPath) {
+				e.failf("S12.2: want the error stream to name %s, got %q", e.cfgPath, r.stderr)
+			}
+			rj := e.run("print", "--json")
+			e.wantExit(rj, 0)
+			if doc := parseDoc(e, rj.stdout); doc != nil {
+				if got := keys(docRows(doc)); strings.Join(got, " ") != "AAPL ITUB4 MSFT PETR4 VALE3" {
+					e.failf("S12.1 (JSON): want the rows %v, got %v", example, got)
+				}
+			}
+			e.sleep(6*time.Second, "past the 5 seconds of 6.5 row 3")
+			rr := e.run("print", "--refresh")
+			e.wantExit(rr, 0)
+			if after := list(); after != before {
+				e.failf("S12.3: something was created under %s:\n--- before\n%s--- after\n%s", base, before, after)
+			}
+		})
+	}
+}
+
+// S12.4 Given `--config <missing file>`, when the tool starts, then it exits
+// with status 2. S12.5 ... then a message on the error stream names the path.
+// Also 7.6: with --json, standard output carries a document with state
+// `error`. Nothing is requested; the missing file is not created.
+func TestVerifyS12_04_05_ConfigFlagMissingFile(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S12.4, S12.5", baseConfig)
+	missing := filepath.Join(e.root, "missing.toml")
+	for _, args := range [][]string{{"--config", missing, "print"}, {"--config", missing, "print", "--json"}} {
+		r := e.run(args...)
+		e.wantExit(r, 2)
+		e.wantNoRequests(r, "missing config")
+		if !strings.Contains(r.stderr, missing) {
+			e.failf("S12.5: want the error stream to name %s, got %q", missing, r.stderr)
+		}
+		if len(args) == 4 {
+			if doc := parseDoc(e, r.stdout); doc != nil && doc["state"] != "error" {
+				e.failf("7.6: want state \"error\", got %v", doc["state"])
+			}
+		}
+	}
+	if _, err := os.Stat(missing); err == nil {
+		e.failf("the missing config file was created")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S17 The data source can be replaced
+// ---------------------------------------------------------------------------
+
+// S17.3 Given the first version, when its config file and flags are listed,
+// then none of them selects a data source. Observed: the help text names no
+// such flag (nor the testing variable, 7.1); `--source` is an unknown flag
+// (exit 2); a `source` key in the config is an unknown key (a warning names
+// it) and the requests still go to the stand-in.
+func TestVerifyS17_03_NothingSelectsASource(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S17.3", "source = \"http://127.0.0.1:1\"\n"+baseConfig)
+	for _, args := range [][]string{{"--help"}, {"print", "--help"}} {
+		r := e.run(args...)
+		e.wantExit(r, 0)
+		help := strings.ToLower(r.stdout + r.stderr)
+		for _, w := range []string{"source", "url", "provider", "yahoo", "brl_stocks_source_url"} {
+			if strings.Contains(help, w) {
+				e.failf("`%s`: the help text mentions %q: %q", strings.Join(args, " "), w, r.stdout+r.stderr)
+			}
+		}
+	}
+	r := e.run("print", "--source", "http://127.0.0.1:1")
+	e.wantExit(r, 2)
+	r2 := e.run("print")
+	e.wantExit(r2, 0)
+	if !strings.Contains(r2.stderr, "source") {
+		e.failf("a `source` key: want a warning naming it as unknown, got %q", r2.stderr)
+	}
+	if len(r2.reqs) == 0 {
+		e.failf("with a `source` key, the requests no longer reach the stand-in")
+	}
+	wantWatchlist(e, r2.stdout, tickers, nil, "S17.3")
 }

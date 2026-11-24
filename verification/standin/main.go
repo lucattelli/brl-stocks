@@ -54,6 +54,10 @@ type state struct {
 	ClosedAgoSeconds int64 `json:"closed_ago_seconds"`
 	// Quotes overrides fields of single symbols.
 	Quotes map[string]override `json:"quotes"`
+	// VaryQuotes, when true, changes the price on every answer: the request's
+	// sequence number moves it by up to 9.96 (in steps of 0.01) from the
+	// synthetic price, and the day low and high follow it. Off by default.
+	VaryQuotes bool `json:"vary_quotes"`
 }
 
 // record is one request as the source saw it.
@@ -202,6 +206,16 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 		}
 		if o.High != nil {
 			q.High = *o.High
+		}
+	}
+
+	if st.VaryQuotes {
+		q.Price += float64(seq%997) / 100
+		if q.Price < q.Low {
+			q.Low = q.Price
+		}
+		if q.Price > q.High {
+			q.High = q.Price
 		}
 	}
 

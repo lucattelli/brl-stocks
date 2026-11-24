@@ -42,6 +42,7 @@ type Entry struct {
 	LastAttempt time.Time `json:"last_attempt"` // when the last request was answered or gave up
 	Failures    int       `json:"failures"`     // consecutive
 	Fail        *Failure  `json:"fail,omitempty"`
+	ConfigMTime time.Time `json:"config_mtime"` // the config's modification time at the last attempt
 }
 
 // Health is the block record of one source.
@@ -149,7 +150,7 @@ func rowDue(w Instrument, e Entry, in PlanInput) bool {
 		return false
 	}
 	if e.Fail.Unknown() {
-		return !now.Before(e.LastAttempt.Add(NotFoundWait)) || in.ConfigMTime.After(e.LastAttempt)
+		return !now.Before(e.LastAttempt.Add(NotFoundWait)) || !in.ConfigMTime.Equal(e.ConfigMTime)
 	}
 	if in.Force {
 		recent := !e.LastAttempt.IsZero() && !e.LastAttempt.After(now) && now.Sub(e.LastAttempt) < ForceGuard

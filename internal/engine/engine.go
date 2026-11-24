@@ -85,6 +85,8 @@ func (e *Engine) waitForOthers(r Request, res *Result) (waited bool) {
 		waited = true
 		select {
 		case <-deadline:
+			// Print what the cache holds now, not what the last poll saw.
+			res.Snap, res.Health = e.C.Load(), e.C.LoadSource(e.P.Name())
 			return waited
 		case <-e.After(100 * time.Millisecond):
 		}
@@ -312,7 +314,7 @@ func (e *Engine) commit(r Request, id string, plan market.PlanResult, seenGen in
 		}
 		en.ClaimedAt, en.ClaimID = time.Time{}, ""
 		if o := outcomes[in]; o.sent {
-			en.LastAttempt = o.at
+			en.LastAttempt, en.ConfigMTime = o.at, r.ConfigMTime
 			if o.quote != nil {
 				q := *o.quote
 				q.Series = market.Downsample(q.Series, seriesPoints)
