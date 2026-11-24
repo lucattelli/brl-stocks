@@ -125,7 +125,8 @@ func runPrint(ctx context.Context, o options, d deps.Deps) int {
 		Want: cfg.Want(), Interval: cfg.Interval, ConfigMTime: mtime,
 		Force: o.refresh, Deadline: printDeadline, WaitForOthers: true,
 	})
-	view := render.View{Cfg: cfg, Snap: res.Snap, Health: res.Health, Now: d.Now()}
+	_, noColour := d.LookupEnv("NO_COLOR")
+	view := render.View{Cfg: cfg, Snap: res.Snap, Health: res.Health, Now: d.Now(), Colour: d.IsTTY && !noColour}
 	if o.json {
 		if err := render.JSON(d.Stdout, view); err != nil {
 			fmt.Fprintln(d.Stderr, "brl-stocks:", err)

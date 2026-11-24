@@ -51,3 +51,11 @@ The agent's summary, unedited:
 > S13.22 and S13.23 now pass in all 50 runs each with `-count=50 -race`, and nothing is flaky. Every run sent exactly 1 request per row and per summary entry: PETR4, VALE3, AAPL, IBOV, SP500 and USDBRL. The `BRL_STOCKS_TRY_TOGETHER` switch is removed. Both tests run inside `synctest.Test`, with `Deps.Now = time.Now` and `Deps.After = time.After`, so the bubble's clock decides when waits end. A `time.Sleep` inside the bubble moves it to Monday 2000-01-03 15:00 UTC; the quotes' sessions are built around that moment, so B3, US and USD/BRL are all open. A barrier releases the ten `app.Run` calls at once. The stand-in holds each answer for 300 ms of bubble time; the ten calls took 400–600 ms of bubble time in total. I also ran 20 times with no delay on the source: all passed.
 
 Coordinator's check: the package passes with `-race`; the two tests pass 20 more runs. With the D73 wait switched off in `app.go`, S13.22 fails in 5 of 5 runs, so the test is not vacuous. The wait was switched back on.
+
+## Follow-up: colour on a terminal (S16), same writer, resumed
+
+The agent's summary, unedited:
+
+> I added five colour tests through `print`; one passes and four fail. The product prints no colour at all with IsTTY true, e.g. PETR4 on a terminal: `"PETR4   Petrobras PN    R$ 38,42   +0,31  +0,81%   37,73   38,80  11:45"`. S16.1 fails: `+0,31` and `+0,81%` carry no SGR 32 or 92. S16.2 fails: `-1.12` and `-0.48%` carry no SGR 31 or 91. S16.3 fails on its given: without NO_COLOR the terminal output has no colour either, so its absence with NO_COLOR proves nothing. S16.4 passes, piped and with NO_COLOR. TestW7_3_DayChange_ZeroHasNoColour fails on its given for the same reason. Three readings are mine: "palette green/red" means SGR 32/92 and 31/91; following 7.3, both the value and the percent must be coloured; "colour off" in S16.4 means piped, or NO_COLOR on a terminal.
+
+Coordinator's sorting: a fault (F35); implemented, all five pass. The readings follow 7.3 (the terminal's own palette; value and percent) and S13.7 and S16.3 (when colour is off). No question.

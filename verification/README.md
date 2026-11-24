@@ -184,8 +184,15 @@ The build tag `verification` keeps these checks out of the ordinary
 
 ### Not verified from outside
 
-- Colour on a terminal (S16), and everything about the full-screen view: no
-  terminal is attached; every run here is piped.
+- Everything about the full-screen view: no terminal is attached; every run
+  here is piped.
+- Colour on a terminal (S16.1, S16.2, and S16.3 and S16.4 on a terminal): not
+  checked here, for the same reason. Covered instead by the acceptance tests
+  `TestS16_1_*` to `TestS16_4_*` and `TestW7_3_DayChange_ZeroHasNoColour`
+  (`internal/app/print_shared_acceptance_test.go`), and by a hand check: run
+  `script -qc "brl-stocks print" /dev/null | cat -v` against the stand-in and
+  look for `^[[32m` on a gain and `^[[31m` on a loss, then the same with
+  `NO_COLOR=1` and none. Done on 2026-11-24: as expected.
 - "Closed for more than 30 minutes" (S13.5) is tested with 2 hours. The period
   right after the close (6.1) is not explored.
 - The end of the hourly wait of a not-found row (6.5 row 1) and waits longer than one

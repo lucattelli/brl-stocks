@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,6 +20,37 @@ type View struct {
 	Health market.Health
 	Now    time.Time
 	Zone   *time.Location // for quote times; the machine's zone
+	Colour bool           // colour the day change: a terminal, and NO_COLOR not set (D25)
+}
+
+// Colours of the terminal's own palette (D25, spec 7.3).
+const (
+	green = "\x1b[32m"
+	red   = "\x1b[31m"
+	reset = "\x1b[0m"
+)
+
+// paint colours s by the sign of a day change as it is shown with the given
+// decimals; a change that shows as zero stays uncoloured (D50).
+func (v View) paint(s string, change float64, decimals int) string {
+	r := math.Round(change * math.Pow(10, float64(decimals)))
+	switch {
+	case !v.Colour || r == 0:
+		return s
+	case r > 0:
+		return green + s + reset
+	}
+	return red + s + reset
+}
+
+// dayChange is the change value of a row with a quote to show, for colour.
+func (v View) dayChange(in market.Instrument) (float64, bool) {
+	switch st, _ := v.state(in); st {
+	case market.NotFound, market.NoData:
+		return 0, false
+	}
+	val, _ := change(v.Snap[in].Quote)
+	return val, true
 }
 
 const dash = "—"
@@ -103,7 +135,7 @@ func (v View) summaryLine() string {
 		}
 		_, pct := change(e.Quote)
 		br := brazilian(in)
-		parts = append(parts, label+" "+number(e.Quote.Price, decimals, br)+" "+signed(pct, 2, br)+"%")
+		parts = append(parts, label+" "+number(e.Quote.Price, decimals, br)+" "+v.paint(signed(pct, 2, br)+"%", pct, 2))
 	}
 	return strings.Join(parts, "    ")
 }
@@ -115,6 +147,7 @@ func Table(w io.Writer, v View) {
 	type line struct {
 		cells []string // nil: a group name or a blank line, in text
 		text  string
+		in    market.Instrument
 	}
 	lines := []line{{cells: header}}
 	for _, g := range v.Cfg.Groups {
@@ -122,7 +155,7 @@ func Table(w io.Writer, v View) {
 			lines = append(lines, line{text: g.Name})
 		}
 		for _, in := range g.Tickers {
-			lines = append(lines, line{cells: v.row(in)})
+			lines = append(lines, line{cells: v.row(in), in: in})
 		}
 	}
 	width := make([]int, len(header))
@@ -147,6 +180,11 @@ func Table(w io.Writer, v View) {
 			pad := strings.Repeat(" ", width[i]-utf8.RuneCountInString(c))
 			if i > 0 {
 				b.WriteString("  ")
+			}
+			// The change value and percent (columns 3 and 4) are coloured after
+			// padding, so that colour codes do not change the alignment.
+			if val, ok := v.dayChange(l.in); ok && l.in.Symbol != "" && (i == 3 || i == 4) {
+				c = v.paint(c, val, 2)
 			}
 			if rightAligned[i] {
 				b.WriteString(pad + c)

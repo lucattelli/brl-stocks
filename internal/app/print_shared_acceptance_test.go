@@ -18,6 +18,7 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucattelli/brl-stocks/internal/app"
 	"github.com/lucattelli/brl-stocks/internal/deps"
@@ -982,6 +983,251 @@ func TestW6_5_NotFound_RaisesNoErrorLine(t *testing.T) {
 	for _, phrase := range causePhrases {
 		if n := linesStarting(r.stderr, phrase); n != 0 {
 			t.Errorf("a not-found row raised the error line %q:\n%s", phrase, r.stderr)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S16 - Colour (through `brl-stocks print` on a terminal)
+// ---------------------------------------------------------------------------
+
+// The terminal palette's green and red are read here as the standard palette
+// codes: SGR 32 or 92 for green, 31 or 91 for red.
+
+// runTerminal calls the tool once with IsTTY set as given and the extra
+// environment variables added.
+func (w *world) runTerminal(isTTY bool, env map[string]string, args ...string) result {
+	w.t.Helper()
+	var out, errOut bytes.Buffer
+	code := app.Run(context.Background(), args, deps.Deps{
+		Provider: w.src,
+		Now:      func() time.Time { return w.now },
+		After:    w.timer.After,
+		LookupEnv: func(k string) (string, bool) {
+			if v, ok := env[k]; ok {
+				return v, true
+			}
+			v, ok := w.env[k]
+			return v, ok
+		},
+		Stdout: &out,
+		Stderr: &errOut,
+		IsTTY:  isTTY,
+	})
+	r := result{code: code, stdout: out.String(), stderr: errOut.String()}
+	if r.code != 0 {
+		w.t.Fatalf("brl-stocks %s: exit status %d, want 0\nstderr: %s", strings.Join(args, " "), r.code, r.stderr)
+	}
+	return r
+}
+
+var sgr = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
+
+// plain removes every SGR sequence.
+func plain(s string) string { return sgr.ReplaceAllString(s, "") }
+
+// foregroundAt returns the foreground colour code in force at every character
+// of text, where text is first found in line once the escape codes are
+// ignored: "" for the default colour, otherwise the SGR code ("32", "91",
+// "38;5;2" ...). It fails the test when text is not in the line.
+func foregroundAt(t *testing.T, line, text string) []string {
+	t.Helper()
+	var chars []rune
+	var colours []string
+	fg := ""
+	rest := line
+	for len(rest) > 0 {
+		if loc := sgr.FindStringSubmatchIndex(rest); loc != nil && loc[0] == 0 {
+			params := strings.Split(rest[loc[2]:loc[3]], ";")
+			for i := 0; i < len(params); i++ {
+				switch p := params[i]; {
+				case p == "" || p == "0" || p == "39":
+					fg = ""
+				case len(p) == 2 && (p[0] == '3' || p[0] == '9') && p[1] >= '0' && p[1] <= '7':
+					fg = p
+				case p == "38" && i+1 < len(params) && params[i+1] == "5" && i+2 < len(params):
+					fg = "38;5;" + params[i+2]
+					i += 2
+				case p == "38" && i+1 < len(params) && params[i+1] == "2" && i+4 < len(params):
+					fg = "38;2;" + strings.Join(params[i+2:i+5], ";")
+					i += 4
+				}
+			}
+			rest = rest[loc[1]:]
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(rest)
+		chars = append(chars, r)
+		colours = append(colours, fg)
+		rest = rest[size:]
+	}
+	i := strings.Index(string(chars), text)
+	if i < 0 {
+		t.Fatalf("%q not found in line %q", text, line)
+	}
+	start := utf8.RuneCountInString(string(chars)[:i])
+	return colours[start : start+utf8.RuneCountInString(text)]
+}
+
+// rowOnTerminal finds the line of a row in coloured output.
+func rowOnTerminal(t *testing.T, out, ticker string) string {
+	t.Helper()
+	for _, l := range lines(out) {
+		if f := strings.Fields(plain(l)); len(f) > 0 && f[0] == ticker {
+			return l
+		}
+	}
+	t.Fatalf("no line for row %s in:\n%q", ticker, out)
+	return ""
+}
+
+// assertColoured checks that every character of text is in one of codes.
+func assertColoured(t *testing.T, line, text, name string, codes ...string) {
+	t.Helper()
+	for _, c := range foregroundAt(t, line, text) {
+		ok := false
+		for _, want := range codes {
+			ok = ok || c == want
+		}
+		if !ok {
+			t.Errorf("%q is not all in %s (SGR %s): found colour %q in %q", text, name, strings.Join(codes, " or "), c, line)
+			return
+		}
+	}
+}
+
+// colourCode reports whether out holds an SGR sequence that sets a colour.
+func colourCode(out string) bool {
+	for _, m := range sgr.FindAllStringSubmatch(out, -1) {
+		for _, p := range strings.Split(m[1], ";") {
+			if len(p) == 2 && strings.ContainsRune("349", rune(p[0])) && p[1] >= '0' && p[1] <= '8' {
+				return true
+			}
+			if len(p) == 3 && p[:2] == "10" && p[2] >= '0' && p[2] <= '7' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// S16.1 Given a row whose day change is positive, when it is drawn on a
+// terminal, then the change is in the terminal palette's green. (D25)
+func TestS16_1_PositiveChangeIsGreenOnATerminal(t *testing.T) {
+	// Given: PETR4 at 38.42 after a close of 38.11: +0,31, +0,81%
+	w := newWorld(t, bothOpen, plainConfig)
+	loadQuotes(w.src, w.now, true)
+
+	// When
+	r := w.runTerminal(true, nil, "print")
+
+	// Then: the change, value and percent (7.3, "Row" and "Day change")
+	line := rowOnTerminal(t, r.stdout, "PETR4")
+	assertColoured(t, line, "+0,31", "green", "32", "92")
+	assertColoured(t, line, "+0,81%", "green", "32", "92")
+}
+
+// S16.2 Given a row whose day change is negative, when it is drawn on a
+// terminal, then the change is in the terminal palette's red. (D25)
+func TestS16_2_NegativeChangeIsRedOnATerminal(t *testing.T) {
+	// Given: AAPL at 229.87 after a close of 230.99: -1.12, -0.48%
+	w := newWorld(t, bothOpen, plainConfig)
+	loadQuotes(w.src, w.now, true)
+
+	// When
+	r := w.runTerminal(true, nil, "print")
+
+	// Then
+	line := rowOnTerminal(t, r.stdout, "AAPL")
+	assertColoured(t, line, "-1.12", "red", "31", "91")
+	assertColoured(t, line, "-0.48%", "red", "31", "91")
+}
+
+// S16.3 Given `NO_COLOR` is set, when the view or the one-shot output is
+// drawn, then it contains no colour codes. (D25)
+func TestS16_3_NoColorMeansNoColourCodes(t *testing.T) {
+	// Given: rows up and down, on a terminal, with NO_COLOR set
+	w := newWorld(t, bothOpen, plainConfig)
+	loadQuotes(w.src, w.now, true)
+
+	// Given established: without NO_COLOR, the same output is in colour
+	if on := w.runTerminal(true, nil, "print"); !colourCode(on.stdout) {
+		t.Fatalf("given not established: without NO_COLOR the output on a terminal has no colour either, so its absence proves nothing:\n%q", on.stdout)
+	}
+
+	// When
+	r := w.runTerminal(true, map[string]string{"NO_COLOR": "1"}, "print")
+
+	// Then
+	if !hasRow(plain(r.stdout), "PETR4") {
+		t.Fatalf("given not established: the table was not printed:\n%q", r.stdout)
+	}
+	if colourCode(r.stdout) {
+		t.Errorf("standard output holds colour codes with NO_COLOR set:\n%q", r.stdout)
+	}
+	if colourCode(r.stderr) {
+		t.Errorf("the error stream holds colour codes with NO_COLOR set:\n%q", r.stderr)
+	}
+}
+
+// S16.4 Given colour is off, when a row is drawn, then the day change still
+// starts with `+` or `-`. (D50)
+func TestS16_4_ChangeKeepsItsSignWithoutColour(t *testing.T) {
+	for name, c := range map[string]struct {
+		tty bool
+		env map[string]string
+	}{
+		"piped":    {false, nil},
+		"NO_COLOR": {true, map[string]string{"NO_COLOR": "1"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Given: PETR4 up, AAPL down, VALE3 unchanged
+			w := newWorld(t, bothOpen, plainConfig)
+			loadQuotes(w.src, w.now, true)
+
+			// When
+			r := w.runTerminal(c.tty, c.env, "print")
+
+			// Then
+			for ticker, changes := range map[string][]string{
+				"PETR4": {"+0,31", "+0,81%"},
+				"AAPL":  {"-1.12", "-0.48%"},
+				"VALE3": {"+0,00", "+0,00%"},
+			} {
+				line := rowOnTerminal(t, r.stdout, ticker)
+				for _, ch := range changes {
+					if !strings.Contains(line, ch) {
+						t.Errorf("row %s does not show the change %s: %q", ticker, ch, line)
+					}
+				}
+			}
+		})
+	}
+}
+
+// 7.3, "Day change": "Green when up, red when down, from the terminal's own
+// palette; no colour when zero (D25, D50)."
+func TestW7_3_DayChange_ZeroHasNoColour(t *testing.T) {
+	// Given: VALE3 at 61.07 after a close of 61.07
+	w := newWorld(t, bothOpen, plainConfig)
+	loadQuotes(w.src, w.now, true)
+
+	// When
+	r := w.runTerminal(true, nil, "print")
+
+	// Given established: colour is on, so a missing one means something
+	if !colourCode(r.stdout) {
+		t.Fatalf("given not established: the output on a terminal has no colour at all:\n%q", r.stdout)
+	}
+
+	// Then
+	line := rowOnTerminal(t, r.stdout, "VALE3")
+	for _, text := range []string{"+0,00", "+0,00%"} {
+		for _, c := range foregroundAt(t, line, text) {
+			if c != "" {
+				t.Errorf("%q of an unchanged row is in colour %q: %q", text, c, line)
+				break
+			}
 		}
 	}
 }
