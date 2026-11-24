@@ -35,6 +35,10 @@ type fakeSource struct {
 	failing map[market.Instrument]provider.Kind
 	down    provider.Kind // when set, every request fails with this kind
 	counts  map[market.Instrument]int
+
+	hanging  bool          // when set, no request is answered before its context ends
+	hung     chan struct{} // closed when the first request starts to hang
+	hungOnce sync.Once
 }
 
 func newFakeSource() *fakeSource {
@@ -42,15 +46,24 @@ func newFakeSource() *fakeSource {
 		quotes:  map[market.Instrument]market.Quote{},
 		failing: map[market.Instrument]provider.Kind{},
 		counts:  map[market.Instrument]int{},
+		hung:    make(chan struct{}),
 	}
 }
 
 func (f *fakeSource) Name() string { return "stand-in" }
 
-func (f *fakeSource) Quote(_ context.Context, in market.Instrument) (market.Quote, error) {
+func (f *fakeSource) Quote(ctx context.Context, in market.Instrument) (market.Quote, error) {
+	f.mu.Lock()
+	f.counts[in]++
+	hanging := f.hanging
+	f.mu.Unlock()
+	if hanging {
+		f.hungOnce.Do(func() { close(f.hung) })
+		<-ctx.Done()
+		return market.Quote{}, &provider.Error{Kind: provider.Unavailable, Msg: "stand-in: no answer"}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.counts[in]++
 	if f.down != "" {
 		return market.Quote{}, &provider.Error{Kind: f.down, Msg: "stand-in: source down"}
 	}
@@ -93,6 +106,13 @@ func (f *fakeSource) failAll(kind provider.Kind) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.down = kind
+}
+
+// hang makes the source never answer: a request ends only with its context.
+func (f *fakeSource) hang() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hanging = true
 }
 
 func (f *fakeSource) count(in market.Instrument) int {
@@ -188,8 +208,51 @@ const plainConfig = `tickers = ["PETR4", "VALE3", "AAPL"]
 
 var plainRows = []market.Instrument{petr4, vale3, aapl}
 
+// fakeTimer stands in for Deps.After. No timer fires by itself, so no test
+// ever waits: a deadline passes only when the test calls elapse.
+type fakeTimer struct {
+	mu      sync.Mutex
+	elapsed time.Duration // every timer up to this long fires
+	pending []pendingTimer
+}
+
+type pendingTimer struct {
+	d  time.Duration
+	ch chan time.Time
+}
+
+func (f *fakeTimer) After(d time.Duration) <-chan time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	if d <= f.elapsed {
+		ch <- time.Time{}
+	} else {
+		f.pending = append(f.pending, pendingTimer{d, ch})
+	}
+	return ch
+}
+
+// elapse lets d pass for the timers: every timer of at most d fires, whether
+// it was asked for already or is asked for later.
+func (f *fakeTimer) elapse(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.elapsed = d
+	var rest []pendingTimer
+	for _, p := range f.pending {
+		if p.d <= d {
+			p.ch <- time.Time{}
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	f.pending = rest
+}
+
 type world struct {
 	t          *testing.T
+	timer      *fakeTimer
 	now        time.Time
 	src        *fakeSource
 	env        map[string]string
@@ -209,9 +272,10 @@ func newWorld(t *testing.T, start time.Time, config string) *world {
 	t.Helper()
 	home, cfg, cache := t.TempDir(), t.TempDir(), t.TempDir()
 	w := &world{
-		t:   t,
-		now: start,
-		src: newFakeSource(),
+		t:     t,
+		timer: &fakeTimer{},
+		now:   start,
+		src:   newFakeSource(),
 		env: map[string]string{
 			"HOME":            home,
 			"XDG_CONFIG_HOME": cfg,
@@ -238,6 +302,7 @@ func (w *world) run(args ...string) result {
 	code := app.Run(context.Background(), args, deps.Deps{
 		Provider: w.src,
 		Now:      func() time.Time { return w.now },
+		After:    w.timer.After,
 		LookupEnv: func(k string) (string, bool) {
 			v, ok := w.env[k]
 			return v, ok
@@ -348,6 +413,17 @@ func lines(out string) []string {
 	return strings.Split(strings.TrimRight(out, "\n"), "\n")
 }
 
+// linesStarting counts the lines of out that start with prefix.
+func linesStarting(out, prefix string) int {
+	n := 0
+	for _, l := range lines(out) {
+		if strings.HasPrefix(l, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
 // rowIndex returns the index of the one line of the table whose first word is
 // the ticker.
 func rowIndex(t *testing.T, out, ticker string) int {
@@ -448,26 +524,22 @@ func TestS13_1_PrintsAlignedTableWithOneLinePerRow(t *testing.T) {
 	// Then: one line per row
 	petr, vale, appl := rowLine(t, r.stdout, "PETR4"), rowLine(t, r.stdout, "VALE3"), rowLine(t, r.stdout, "AAPL")
 
-	// Then: aligned. A column is aligned when its cells start at the same
-	// place in every row, or end at the same place in every row.
-	aligned := func(column string, cells ...[2]int) {
+	// Then: aligned (spec 7.3, "Alignment"). The ticker and the name start
+	// at the same position in every row; where the prices end is S13.20.
+	nameStart := func(line, name string) int {
 		t.Helper()
-		sameStart, sameEnd := true, true
-		for _, c := range cells[1:] {
-			sameStart = sameStart && c[0] == cells[0][0]
-			sameEnd = sameEnd && c[1] == cells[0][1]
-		}
-		if !sameStart && !sameEnd {
-			t.Errorf("column %s is not aligned (start,end per row: %v) in:\n%s", column, cells, r.stdout)
+		start, _ := span(t, line, name)
+		return start
+	}
+	p, v, a := nameStart(petr, "Petrobras PN"), nameStart(vale, "Vale ON"), nameStart(appl, "Apple Inc.")
+	if p != v || p != a {
+		t.Errorf("names start at columns %d, %d and %d, want one column:\n%s", p, v, a, r.stdout)
+	}
+	for _, line := range []string{petr, vale, appl} {
+		if line[0] == ' ' {
+			t.Errorf("tickers do not start at the same position:\n%s", r.stdout)
 		}
 	}
-	cell := func(line, text string) [2]int {
-		t.Helper()
-		s, e := span(t, line, text)
-		return [2]int{s, e}
-	}
-	aligned("NAME", cell(petr, "Petrobras PN"), cell(vale, "Vale ON"), cell(appl, "Apple Inc."))
-	aligned("LAST", cell(petr, "R$ 38,42"), cell(vale, "R$ 61,07"), cell(appl, "US$ 229.87"))
 }
 
 // S13.2 Given an open market and a cache whose quotes were fetched at most 60
@@ -649,8 +721,39 @@ tickers = ["AAPL", "MSFT"]
 // S13.9 Given a source that does not answer, when `brl-stocks print` is run,
 // then it prints and exits within 11 seconds. (D50)
 func TestS13_9_SourceThatDoesNotAnswerExitsWithin11Seconds(t *testing.T) {
-	t.Skip("cannot be tested through this boundary without real time: Deps has a clock (Now) but no timer, " +
-		"so the 10-second limit of spec 7.6 can only be observed by letting a stand-in hang for 10 real seconds")
+	// Given: a source that answers no request before the request is given up
+	w := newWorld(t, bothOpen, plainConfig)
+	w.src.hang()
+
+	// When: print runs, and 11 seconds pass for its timers once it waits
+	// for the source. The real-time limits below only keep a hang from
+	// blocking the suite.
+	done := make(chan result, 1)
+	go func() { done <- w.run("print") }()
+	const safety = 10 * time.Second
+	var r result
+	select {
+	case <-w.src.hung:
+		w.timer.elapse(11 * time.Second)
+		select {
+		case r = <-done:
+		case <-time.After(safety):
+			t.Fatal("print did not return once 11 seconds had passed on its timers")
+		}
+	case r = <-done:
+		if r.code != 0 {
+			t.Fatalf("exit status %d, want 0\nstderr: %s", r.code, r.stderr)
+		}
+		t.Fatal("given not established: print, with no cache, returned without asking the source")
+	case <-time.After(safety):
+		t.Fatal("print neither asked the source nor returned")
+	}
+
+	// Then: it printed and exited
+	if r.code != 0 {
+		t.Errorf("exit status %d, want 0\nstderr: %s", r.code, r.stderr)
+	}
+	rowLine(t, r.stdout, "PETR4")
 }
 
 // S13.10 Given the source is rate-limiting or refusing the tool, when
@@ -722,8 +825,8 @@ func TestS13_12_ClosedMarketRowsShowTheLastClose(t *testing.T) {
 }
 
 // S13.13 Given a default summary, when `brl-stocks print` is run, then the
-// first line of the output is the summary line. (D11, D50)
-func TestS13_13_FirstLineIsTheSummaryLine(t *testing.T) {
+// first line of the output starts with `IBOV`. (D11, D50, D71)
+func TestS13_13_FirstLineStartsWithIBOV(t *testing.T) {
 	// Given: a config that does not set `summary`
 	w := newWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
@@ -731,15 +834,9 @@ func TestS13_13_FirstLineIsTheSummaryLine(t *testing.T) {
 	// When
 	r := w.runOK("print")
 
-	// Then: the entries of the default summary, in order, as 7.4 labels them
-	first := lines(r.stdout)[0]
-	at := 0
-	for _, label := range []string{"IBOV", "S&P 500", "USD/BRL"} {
-		i := strings.Index(first[at:], label)
-		if i < 0 {
-			t.Fatalf("first line is not the summary line (%q missing, or out of order): %q", label, first)
-		}
-		at += i + len(label)
+	// Then
+	if first := lines(r.stdout)[0]; !strings.HasPrefix(first, "IBOV") {
+		t.Errorf("first line does not start with IBOV: %q", first)
 	}
 }
 
@@ -762,32 +859,22 @@ func TestS13_14_LastLineGivesTheStateOfEachMarket(t *testing.T) {
 }
 
 // S13.15 Given cached quotes, an open market and a source that cannot be
-// reached, when `brl-stocks print` is run, then one line on the error stream
-// names the cause. (D19, D50)
+// reached, when `brl-stocks print` is run, then exactly one line on the error
+// stream starts with `source unreachable`. (D19, D50, D71)
 func TestS13_15_UnreachableSourceIsNamedOnOneLineOfTheErrorStream(t *testing.T) {
 	// Given
 	w := newWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
-	primed := w.prime(plainRows...)
-	if strings.TrimSpace(primed.stderr) != "" {
-		t.Fatalf("given not established: a print with nothing wrong wrote to the error stream: %q", primed.stderr)
-	}
+	w.prime(plainRows...)
 	w.advance(5 * time.Minute)
 	w.src.failAll(provider.Unavailable)
 
 	// When
 	r := w.runOK("print")
 
-	// Then: exactly one line. The spec does not fix its wording, so the
-	// text of the cause is not asserted.
-	var got []string
-	for _, l := range lines(r.stderr) {
-		if strings.TrimSpace(l) != "" {
-			got = append(got, l)
-		}
-	}
-	if len(got) != 1 {
-		t.Errorf("error stream has %d lines, want 1 naming the cause:\n%s", len(got), r.stderr)
+	// Then
+	if got := linesStarting(r.stderr, "source unreachable"); got != 1 {
+		t.Errorf("%d lines of the error stream start with %q, want 1:\n%s", got, "source unreachable", r.stderr)
 	}
 }
 
@@ -795,7 +882,8 @@ func TestS13_15_UnreachableSourceIsNamedOnOneLineOfTheErrorStream(t *testing.T) 
 // print` is run without `--refresh`, then that row is not requested.
 // (D19, D50)
 func TestS13_16_RowThatJustFailedIsNotRequested(t *testing.T) {
-	// Given: PETR4 in the cache, then a fetch of PETR4 that failed
+	// Given: PETR4 in the cache, then a first failed fetch of PETR4, whose
+	// wait is one refresh interval: 60 seconds (spec 6.2)
 	w := newWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
 	w.prime(plainRows...)
@@ -866,6 +954,45 @@ func TestS13_19_IbovespaInWholePoints(t *testing.T) {
 	// Then
 	if first := lines(r.stdout)[0]; !strings.Contains(first, "158.432") {
 		t.Errorf("first line does not show 158.432: %q", first)
+	}
+}
+
+// S13.20 Given two rows whose names and prices have different lengths, when
+// `brl-stocks print` is run, then the two prices end at the same column.
+// (D18, D71)
+func TestS13_20_PricesEndAtTheSameColumn(t *testing.T) {
+	// Given: "Petrobras PN" at R$ 38,42 and "Apple Inc." at US$ 229.87
+	w := newWorld(t, bothOpen, `tickers = ["PETR4", "AAPL"]`+"\n")
+	loadQuotes(w.src, w.now, true)
+
+	// When
+	r := w.runOK("print")
+
+	// Then
+	_, petrEnd := span(t, rowLine(t, r.stdout, "PETR4"), "R$ 38,42")
+	_, applEnd := span(t, rowLine(t, r.stdout, "AAPL"), "US$ 229.87")
+	if petrEnd != applEnd {
+		t.Errorf("prices end at columns %d and %d, want the same column:\n%s", petrEnd, applEnd, r.stdout)
+	}
+}
+
+// S13.21 Given a source that is rate-limiting and cached quotes, when
+// `brl-stocks print` is run, then one line on the error stream starts with
+// `source is rate-limiting`. (D19, D38, D71)
+func TestS13_21_RateLimitingSourceIsNamedOnOneLineOfTheErrorStream(t *testing.T) {
+	// Given
+	w := newWorld(t, bothOpen, plainConfig)
+	loadQuotes(w.src, w.now, true)
+	w.prime(plainRows...)
+	w.advance(5 * time.Minute)
+	w.src.failAll(provider.RateLimited)
+
+	// When
+	r := w.runOK("print")
+
+	// Then
+	if got := linesStarting(r.stderr, "source is rate-limiting"); got != 1 {
+		t.Errorf("%d lines of the error stream start with %q, want 1:\n%s", got, "source is rate-limiting", r.stderr)
 	}
 }
 

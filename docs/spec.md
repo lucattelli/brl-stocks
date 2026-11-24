@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-23 (D67), and updated the same day for D68 and D70. First approved as D52, updated for D59, D60 and D62, then reopened for three proposals on number formats, settled as D64, D65 and D66. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D70, facts F1–F31).
+Status: approved, 2026-11-23 (D72). Earlier approvals: D52, D67. Since D67 it was updated for D68 and D70 and for three points from writing the acceptance tests (D71). Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D72, facts F1–F31).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -192,6 +192,8 @@ External facts that shape behaviour and that nobody chose.
 
 At start, a row whose quote is in the cache begins as Fresh or Stale by the same rule (D20, D40); a row with no cached quote begins as No data.
 
+The wait after failures (D50): after a row's n-th failed fetch in a row, its next automatic attempt comes after one refresh interval × 2^(n−1), at most 30 minutes. The first wait is therefore one interval: 60 seconds by default, then 120, 240 and so on.
+
 ### 6.3 Source
 
 | State | Event | Next state | What happens | Source |
@@ -314,8 +316,9 @@ source unreachable: 1 row not updated · next attempt 10:43
 B3 open · US closed · sort: file order · ? help
 ```
 
-- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50). The Ibovespa is shown in whole points and the S&P 500 with two decimals, as the examples in D51 show them (D65). Each entry's percent follows the format of its entry (D51).
+- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Its entries are labelled `IBOV`, `S&P 500` and `USD/BRL` (D71). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50). The Ibovespa is shown in whole points and the S&P 500 with two decimals, as the examples in D51 show them (D65). Each entry's percent follows the format of its entry (D51).
 - **Row.** Ticker, name, last price, day change (value and percent), day low and high, quote time (D9), then the sparkline (D13).
+- **Alignment.** In every row, the ticker and the name start at the same position; the last price, the change value, the percent, the low and the high each end at the same position; the quote time starts at the same position (D18, D71).
 - **Currency.** B3 prices carry `R$`, US prices `US$`; nothing is converted (D10).
 - **Numbers.** Each row uses the format of its currency: R$ rows a comma for decimals and a dot for thousands (`R$ 1.038,42`), US$ rows a dot for decimals and a comma for thousands (`US$ 1,229.87`). This covers the amounts in the row's currency: the price, the change value and the day low and high (D46). The day change percent is not an amount in a currency; it follows the same format (D64). Prices, including the day low and high, have two decimals (D46); so have the change value and the percent (D65). Only the last price carries the currency symbol, followed by one space; values are rounded half away from zero; a minus sign is the plain hyphen; a change of zero reads `+0,00` or `+0.00` (D66). In the summary line, each entry uses the format of its market, and USD/BRL the R$ format (D51).
 - **Day change.** Always with a sign. Green when up, red when down, from the terminal's own palette; no colour when zero (D25, D50). No colour at all when `NO_COLOR` is set (D25).
@@ -326,7 +329,7 @@ B3 open · US closed · sort: file order · ? help
 - **No data yet.** `—` in every data column (D50).
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
 - **Closed market.** The status line gives the state of each market: `B3 open · US closed`. Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
-- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt. When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
+- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt. The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
 - **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
 - **Language.** Interface text is in English (D50).
@@ -356,7 +359,7 @@ VALE3   Vale ON              R$ 61,07   +0,00  +0,00%    60,80    61,55  10:14 !
 B3 open · US closed
 ```
 
-The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; numbers are formatted as in the view (D46, D51); stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
+The summary line, a header row, the columns of the standard row without the sparkline, group names on their own lines, and a last line with the state of each market; numbers are formatted and columns aligned as in the view (D46, D51, D71); stale and not-found rows are marked as in the view (D15, D18, D50). The cause of a failure and any warning go to the error stream, one line each, so that standard output stays a table (D19, D50). Colour follows D25: none when the output is piped or `NO_COLOR` is set.
 
 ### 7.5 One-shot JSON
 
@@ -605,13 +608,15 @@ As a script or the user at a prompt, I want the watchlist printed once, so that 
 - **S13.10** Given the source is rate-limiting or refusing the tool, when `brl-stocks print --refresh` is run, then no request is sent. (D50)
 - **S13.11** Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run, then the table shows the cached quotes. (D23)
 - **S13.12** Given a closed market with cached quotes, when `brl-stocks print` is run, then that market's rows show the last close. (D15)
-- **S13.13** Given a default summary, when `brl-stocks print` is run, then the first line of the output is the summary line. (D11, D50)
+- **S13.13** Given a default summary, when `brl-stocks print` is run, then the first line of the output starts with `IBOV`. (D11, D50, D71)
 - **S13.14** Given the US market is closed and B3 is open, when `brl-stocks print` is run, then the last line of the output reads `B3 open · US closed`. (D15, D50)
-- **S13.15** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then one line on the error stream names the cause. (D19, D50)
+- **S13.15** Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then exactly one line on the error stream starts with `source unreachable`. (D19, D50, D71)
 - **S13.16** Given a row whose fetch failed 30 seconds ago, when `brl-stocks print` is run without `--refresh`, then that row is not requested. (D19, D50)
 - **S13.17** Given a B3 row whose last price is 38.42, when `brl-stocks print` is run, then the table shows `R$ 38,42` in that row. (D46)
 - **S13.18** Given a US row whose last price is 229.87, when `brl-stocks print` is run, then the table shows `US$ 229.87` in that row. (D46)
 - **S13.19** Given a default summary and an Ibovespa value of 158432.10, when `brl-stocks print` is run, then the first line shows `158.432`. (D51, D65)
+- **S13.20** Given two rows whose names and prices have different lengths, when `brl-stocks print` is run, then the two prices end at the same column. (D18, D71)
+- **S13.21** Given a source that is rate-limiting and cached quotes, when `brl-stocks print` is run, then one line on the error stream starts with `source is rate-limiting`. (D19, D38, D71)
 
 ### S14 — One-shot JSON
 
@@ -765,6 +770,9 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P47 | The day change percent of a row follows the number format of the row's currency (`+0,81%` on R$ rows, `-0.48%` on US$ rows). D46 covers "each row's numbers"; the percent is the one number of the row that is not an amount in its currency, and the log marks its inclusion as a reading "to confirm". (The summary line's percents are already covered by D51) | 7.3, S1.11, S1.12 | settled as D64 |
 | P48 | Decimals: the change value and the percent have two; the Ibovespa is shown in whole points and the S&P 500 with two decimals. For the indices this turns the examples of D51 into a rule. (Prices have two by D46, USD/BRL four by D50) | 7.3, 7.4, S1.10–S1.12, S2.5, S2.6, S2.8, S13.19 | settled as D65 |
 | P49 | Formatting details: only the last price carries the currency symbol, followed by one space; values are rounded half away from zero to the decimals shown; a minus sign is the plain hyphen; a change of zero, or one that rounds to zero, reads `+0,00` or `+0.00`; numbers in the JSON output are neither rounded nor formatted | 7.3, 7.5, S1.12–S1.15, S14.12 | settled as D66 |
+| P50 | The summary entries are labelled `IBOV`, `S&P 500` and `USD/BRL`, in the view and in the one-shot table | 7.3, S13.13 | settled as D71 |
+| P51 | Alignment: ticker, name and quote time start at the same position in every row; last price, change value, percent, low and high end at the same position. This defines "aligned" in D18 | 7.3, 7.4, S13.20 | settled as D71 |
+| P52 | The cause on the error line and the error stream is one of four fixed phrases: `source unreachable`, `source is rate-limiting`, `source refused access`, `source answer not understood` | 7.3, S13.15, S13.21 | settled as D71 |
 
 ## 12. Open and unverified
 
@@ -852,3 +860,5 @@ Every decision in the log, and where the spec realises it.
 | D68 | 2 (non-goals) |
 | D69 | process (approval of the design document) |
 | D70 | 7.1; its use is design (section 10 and `docs/design.md`) |
+| D71 | 7.3, 7.4, S13.13, S13.15, S13.20, S13.21 |
+| D72 | process (approval of this spec and of the design document, as updated) |

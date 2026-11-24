@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: draft, 2026-11-23. Approved as D69; changed since for D70 (a testing-only address for the source) and for two protocol rules that the Quint model surfaced (rules 6 and 9 of "The refresh protocol in detail"). It waits on the user's approval. Open (section 7): Q62, and the protocol rules that no critic attacked.
-Sources: `research/grilling-log.md` (decisions D1–D70, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
+Status: approved, 2026-11-23 (D72). Earlier approvals: D63, D69. Since D69 it gained D70 (a testing-only address for the source), two protocol rules that the Quint model surfaced (rules 6 and 9 of "The refresh protocol in detail"), and a timer in the test boundary. Open (section 7): Q62, and the protocol rules, which no critic attacked and the model has checked only up to 20 steps.
+Sources: `research/grilling-log.md` (decisions D1–D72, facts F1–F31), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
@@ -48,7 +48,7 @@ Imports run one way: `app → tui, engine, render, config`; `tui → engine, ren
 | Part | Responsibility | Serves | Decision |
 |---|---|---|---|
 | `app` | Flags, config path, run mode, exit status. The whole tool runs through `Run`, so tests can drive it | S11–S14, QR7 | D41, D44, D45, D53 (C15) |
-| `deps` | The injected edges: source, clock (`time.Now().Round(0)`), `LookupEnv`, output streams | S16.3, S17.2, QR3–QR6 | D53 (C15) |
+| `deps` | The injected edges: source, clock (`time.Now().Round(0)`), a timer (`After`, so that a test can make a deadline pass without waiting), `LookupEnv`, output streams | S13.9, S16.3, S17.2, QR3–QR6 | D53 (C15) |
 | `market` | Types and every rule about time: what is due, what a row shows, whether a market is open. Pure | S5–S8, 6.1–6.5 | D53 (C1, C11) |
 | `provider` | The boundary to a source; `yahoo` maps tickers to its symbols | S17, QR12 | D7, D55 |
 | `cache` | The two files and the lock | S15, QR2, QR8 | D54, D56 |
