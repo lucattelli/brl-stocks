@@ -56,6 +56,7 @@ type Model struct {
 	top        int         // the first line of the list on screen
 	help       bool        // the list of keys is shown
 	busy       bool        // a cycle is running
+	force      bool        // r was pressed while a cycle ran: a forced one follows it
 	stamp      cache.Stamp // of the files when the view last read them
 }
 
@@ -146,6 +147,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case key == "?":
 			m.help = true
+		case key == "r":
+			// Refresh now (6.3): a forced cycle through Plan. While a cycle
+			// runs, the press is kept and the forced one starts when it ends.
+			if m.busy {
+				m.force = true
+				break
+			}
+			m.busy = true
+			return m, m.cycle(true)
 		case key == "s":
 			m.sort = (m.sort + 1) % 3
 		// Scrolling moves the list by one screen line, group headers
@@ -161,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.snap = merge(m.snap, msg.snap)
 		m.health = msg.health
 		m.busy = true
-		return m, m.cycle()
+		return m, m.cycle(false)
 	case diskRead:
 		if msg.changed {
 			// What other processes fetched (C4): merged, never replacing a
@@ -179,7 +189,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, next
 		}
 		m.busy = true
-		return m, tea.Batch(next, m.cycle())
+		return m, tea.Batch(next, m.cycle(false))
 	case cycleDone:
 		m.busy = false
 		m.snap = merge(m.snap, msg.res.Snap)
@@ -187,17 +197,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if w := msg.res.Warn; w != nil && !errors.Is(w, cache.ErrBusy) {
 			m.unwritable = true
 		}
+		if m.force {
+			m.force, m.busy = false, true
+			return m, m.cycle(true)
+		}
 	}
 	return m, nil
 }
 
 // cycle is one refresh through the shared path (D53). The view may fetch
 // when the cache cannot be written, pacing itself from memory (D60).
-func (m Model) cycle() tea.Cmd {
+func (m Model) cycle(force bool) tea.Cmd {
 	eng, ctx := m.o.Engine, m.o.Ctx
 	req := engine.Request{
 		Want: m.o.Cfg.Want(), Interval: m.o.Cfg.Interval, ConfigMTime: m.o.ConfigMTime,
-		Deadline: Deadline, MayFetchUnpaced: true,
+		Deadline: Deadline, MayFetchUnpaced: true, Force: force,
 	}
 	return func() tea.Msg {
 		res := eng.Cycle(ctx, req)
@@ -278,7 +292,11 @@ func (m Model) layout() (head, list, foot []string) {
 		// Said once, in the status line, for as long as it holds (7.7, D60).
 		warnings = append(warnings, m.o.Unwritable)
 	}
-	foot = append(foot, m.statusLine(render.MarketLine(v), warnings))
+	markets := render.MarketLine(v)
+	if next := render.NextAttempt(v); next != "" {
+		markets += " · " + next // kept whole, like the market states (7.3)
+	}
+	foot = append(foot, m.statusLine(markets, warnings))
 	return head, list, foot
 }
 

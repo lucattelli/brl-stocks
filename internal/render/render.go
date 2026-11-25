@@ -280,6 +280,22 @@ func SummaryLine(v View) string {
 // the start of the view's status line (D47, D74).
 func MarketLine(v View) string { return v.prepared().marketLine() }
 
+// NextAttempt is the status line's part during a block: when the next
+// attempt is, as `next attempt HH:MM` in the machine's zone; "" when the
+// source is not blocked (7.3, D38, D79).
+func NextAttempt(v View) string {
+	v = v.prepared()
+	until, _ := market.EffectiveBlock(v.Health, v.want(), v.Snap)
+	if !v.Now.Before(until) {
+		return ""
+	}
+	zone := v.Zone
+	if zone == nil {
+		zone = time.Local
+	}
+	return "next attempt " + until.In(zone).Format("15:04")
+}
+
 // Lines are the column header and the rows under their group names, aligned
 // as one table (D18, D71). The change value and percent are coloured when
 // v.Colour is set. Both surfaces draw their rows with it.
