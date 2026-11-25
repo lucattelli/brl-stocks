@@ -1,6 +1,6 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
 Source: `research/grilling-log.md` (decisions D1–D98, facts F1–F40).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
@@ -201,6 +201,7 @@ The wait after failures (D50): after a row's n-th failed fetch in a row, its nex
 | Normal | The source refuses a request (rate limit or access denied) | Blocked | No more fetches; rows keep their prices; the rows whose fetch was refused are stale; the error line says so; a first wait of 5 minutes starts | D19, D38, D50 |
 | Normal | A fetch fails for any other reason | Normal | Only the rows that failed are affected (6.2) | D19, D50 |
 | Normal | `r` is pressed | Normal | A refresh of every row starts within 2 seconds, including rows waiting after a network error and rows of closed markets; not-found rows keep their hourly wait | D32, D38, D39, D50, D62 |
+| Normal | `r` is pressed while a refresh is running | Normal | The press is kept: a forced refresh starts when the running one ends, skipping rows attempted less than 5 seconds ago | D50, D99 |
 | Blocked | `r` is pressed, or a one-shot call asks for a forced fetch | Blocked | Nothing is fetched; the status line (view) or the line on the error stream (one-shot) says when the next attempt is | D38, D50, D76 |
 | Blocked | The wait ends and the first request after it is answered | Normal | Refresh resumes; the error line goes. A refusal later in that refresh is a new block, with a first wait of 5 minutes | D19, D50, D98 |
 | Blocked | The wait ends and the source refuses again | Blocked | The wait doubles, up to 30 minutes | D19, D50 |
@@ -306,6 +307,7 @@ Rules:
 - Warnings appear in the status line of the view and on the error stream in one-shot (D50).
 - More than 20 tickers are all shown, with a warning that the tool is designed for 20 (D8, D50).
 - A file that cannot be parsed, a value of the wrong type, an unknown `summary` name, or an empty ticker makes the config invalid (D45).
+- A file with no tickers is valid: the view shows no rows (D102).
 
 ### 7.3 The full-screen view
 
@@ -340,7 +342,7 @@ B3 open · US closed · sort: file order · ? help
 - **No data yet.** `—` in every data column (D50).
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
 - **Closed market.** The status line gives the state of each market: `B3 open · US closed`. While the tool has no quote for any instrument of a market, the word is `unknown` (D74). Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
-- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). Summary entries are not rows and are not counted; when only summary entries failed, the line says `summary not updated` instead of a number (D81). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
+- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). Summary entries are not rows and are not counted; when only summary entries failed, the line says `summary not updated` instead of a number (D81). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50). A config problem reads `invalid config <path>, last valid watchlist kept: <problem>`, `config <path> was deleted: showing the last watchlist` or `cannot read the config <path>: <error>`, with the home folder written `~` (D101).
 - **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50). A warning is shortened to fit: the home folder is written `~`, and the wording is short, as in `no config: example watchlist; put yours at ~/.config/brl-stocks/config.toml`. When a warning still does not fit, the current sort is left out before the warning is cut (D95).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
 - **Language.** Interface text is in English (D50).
@@ -731,7 +733,7 @@ As the user, I want the usual flags to work and a mistyped one to be refused, so
 | QR8 | No history is kept | The cache holds at most one quote per ticker; its size after 8 hours of running is within 10% of its size after the first full refresh | view, print | D20, D50 |
 | QR9 | Nothing personal in the repository | The published repository holds no key, token or personal watchlist. Measured by review before publishing | none: the published repository | D1 |
 | QR10 | Free and keyless | The tool shows quotes with no paid plan, key or account. Measured by S17.1 | view, print | D5, D7 |
-| QR11 | Keys answer during a fetch | A key press changes the screen within 100 ms, also while a refresh is running. Measured with a stand-in source that answers after 5 seconds | view | D50 |
+| QR11 | Keys answer during a fetch | A key press changes the screen within 100 ms, also while a refresh is running. Measured with a stand-in source that answers after 4 seconds, so that the fetch is answered and not given up (D100) | view | D50, D100 |
 | QR12 | Privacy on the wire | The tool contacts only its data source, and sends it nothing about the user beyond the symbols requested. Measured by recording the network traffic of a run | view, print | D1, D50 |
 
 ## 10. Design handover
@@ -758,6 +760,7 @@ Not requirements of this spec. Input for the design phase.
 | No step layer between the UI library and the logic | D57 |
 | The design is in `docs/design.md` | D63 |
 | Verification drives the full-screen view through a pseudo-terminal and one small terminal-emulator library, used by verification only | D86 |
+| One request is given up after 5 seconds (design C16) | D100 |
 
 ### Questions: technical choices the behaviour forces
 
@@ -944,3 +947,8 @@ Every decision in the log, and where the spec realises it.
 | D96 | 7.3, S2.9, S2.10 |
 | D97 | process |
 | D98 | 6.3 |
+| D99 | 6.3 |
+| D100 | QR11; design (C16), see the handover |
+| D101 | 7.3 |
+| D102 | 7.2 |
+| D103 | process |
