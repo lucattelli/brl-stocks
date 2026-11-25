@@ -479,3 +479,35 @@ stays open (slice 3); how the marks and the error line look on a real
 terminal (the hand check above, with the stand-in switched to
 `curl -X POST -d '{"status":503}' http://127.0.0.1:18765/_control` after a
 first run and before a second one).
+
+### Increment 4: config, cache and source at start (`view_increment4_verify_test.go`)
+
+The 21 criteria of increment 4 in `research/build/full-screen-view/scope.md`,
+on the real view. On the view the error stream is the terminal: a message at
+start is read from everything the tool wrote (escape sequences removed), and
+the screen after the exit is in the evidence. Warnings are read from the
+status line (7.2). `openViewSized` opens the view on another size (S12 uses
+200 columns, so that the long temporary paths fit). Run of 2026-11-25: the
+ordinary run of all files, about 2 min; 144 top-level checks pass, 0 fail, 7
+skipped (SLOW and LONG); the 13 new checks and the 21 criteria pass, and so do
+the one-shot checks of S15.8 and S15.9 after the change to the engine.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S11.1 | `TestVerifyView_S11_1_DefaultPathUnderHome` | `XDG_CONFIG_HOME` unset; a different watchlist in the folder XDG would name is not shown |
+| S11.5, S11.7, S11.8 | `TestVerifyView_S11_5_7_8_ConfigThroughLink` | `~/.config/brl-stocks` a link to a folder elsewhere; three view runs (`q`, Ctrl+C, `--config` through the link); after each: still a link to the same target, the file byte-identical. For `print`: `TestVerifyQR7_ConfigNeverTouched` |
+| S11.9, S11.16 | `TestVerifyView_S11_9_16_InvalidConfig/*` | Unparsable, wrong type, unknown summary name, empty ticker; default path and `--config`. Exit 2 without a key, no request; the message names the file and the problem, e.g. `brl-stocks: invalid config <path>: unknown summary entry "DAX" (allowed: IBOV, SP500, USDBRL)`, and stays on the main screen after the exit |
+| S11.12, S11.17 | `TestVerifyView_S11_12_17_UnknownKey` | Status line `... · unknown config key "colour_scheme"`; every row shown |
+| S11.13, S11.18 | `TestVerifyView_S11_13_18_TwentyFiveTickers` | 25 rows on a 40-line screen; status line `... · 25 tickers; the tool is designed for 20` |
+| S11.15 | `TestVerifyView_S11_15_XDGConfigHome` | A different watchlist at `~/.config` is not shown |
+| S12.1, S12.2, S12.3 | `TestVerifyView_S12_1_3_NoConfig/{xdg_set,xdg_unset}` | 200 columns. The example rows in the order of 7.7 and the default summary line; status line `... · no config file: showing an example watchlist. Put yours at <path>`; nothing created under the config folder |
+| S12.2 at 120 columns | `TestVerifyView_S12_2_PathAt120Columns` | Observation only: the status line is cut at the screen's width. Its text before the path is 98 characters, so at 120 columns 22 characters of the path show; a usual `/home/<user>/.config/brl-stocks/config.toml` would not fit either. The spec does not say what happens to a status line wider than the screen |
+| S12.4, S12.5 | `TestVerifyView_S12_4_5_ConfigFlagMissingFile` | Exit 2, no request; `brl-stocks: cannot read the config <path>: open <path>: no such file or directory` |
+| S15.2 | `TestVerifyView_S15_2_FilesUnderHomeCache` | `XDG_CACHE_HOME` unset: the new files are `~/.cache/brl-stocks/cache.v1.json` and `lock` |
+| S15.5, S15.8 | `TestVerifyView_S15_5_8_UnwritableCache/*` | Empty folder 0555; parent 0555 and folder missing; quotes kept, then folder and files read-only (the stand-in's price changed, so the new price shows the view fetched). Quotes shown, requests sent; exactly one screen line about the cache: the status line `... · quotes are not kept: <folder>` (cut at 120 columns, as above). Skipped as root |
+| S15.6 | `TestVerifyView_S15_6_RemovedTickerForgotten` | Three view runs: PETR4 and AAPL; AAPL alone 12 s later (it fetched AAPL); both again with the stand-in stopped: PETR4 shows `—` in the 7 data columns |
+| S17.3 | `TestVerifyView_S17_3_NothingSelectsASource` | `brl-stocks --help` names no source, URL, provider or variable; `brl-stocks --source <url>` exits 2; a `source` key: status line `... · unknown config key "source"`, and the requests still reach the stand-in |
+
+Not verified from outside, for these: how a long warning looks on the user's
+terminal at its own width (hand check above, without a config file, at 80 and
+at 120 columns).
