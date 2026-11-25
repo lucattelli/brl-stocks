@@ -114,14 +114,29 @@ func tickersConfig(tickers ...string) string {
 	return `tickers = ["` + strings.Join(tickers, `", "`) + `"]` + "\n"
 }
 
-// errorLineNaming is the one error line of the frame, which must name path.
-func errorLineNaming(t *testing.T, f, path string, tickers ...string) string {
+// configNames are the ways a line may name the config file of world w: its
+// full path, or, under the home folder, the same path with the home folder
+// written `~` (D95).
+func configNames(w *world) []string {
+	names := []string{w.configPath}
+	if home := w.env["HOME"]; home != "" && strings.HasPrefix(w.configPath, home+string(filepath.Separator)) {
+		names = append(names, "~"+strings.TrimPrefix(w.configPath, home))
+	}
+	return names
+}
+
+// errorLineNaming is the one error line of the frame, which must name the
+// file by one of names; it returns the line and the name it uses.
+func errorLineNaming(t *testing.T, f string, names []string, tickers ...string) (string, string) {
 	t.Helper()
 	line := theErrorLine(t, f, tickers...)
-	if !strings.Contains(line, path) {
-		t.Errorf("the error line does not name the file %s: %q", path, line)
+	for _, n := range names {
+		if strings.Contains(line, n) {
+			return line, n
+		}
 	}
-	return line
+	t.Errorf("the error line does not name the file (as any of %q): %q", names, line)
+	return line, ""
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +278,7 @@ func TestS11_6_ViewOpen_TickerAddedThroughALinkedFolder(t *testing.T) {
 
 // savedBroken opens the view on plainConfig, then saves the file with a
 // syntax error and returns the frame 5 seconds later and the path.
-func savedBroken(t *testing.T) (string, string) {
+func savedBroken(t *testing.T) (string, []string) {
 	t.Helper()
 	w := clockWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
@@ -272,17 +287,17 @@ func savedBroken(t *testing.T) (string, string) {
 		t.Fatalf("given not established: the watchlist is not shown:\n%s", f)
 	}
 	c.save(viewUnparsableConfig)
-	return c.within5s(), w.configPath
+	return c.within5s(), configNames(w)
 }
 
 // S11.10 Given the view is open, when the config file is saved with a syntax
 // error, then the view keeps the last valid watchlist. (D45)
 func TestS11_10_ViewOpen_BrokenSaveKeepsTheWatchlist(t *testing.T) {
-	f, path := savedBroken(t)
+	f, names := savedBroken(t)
 
 	// Given established: the view saw the save (6.4: the error line names
 	// the file), so the rows it keeps are kept, not unseen
-	errorLineNaming(t, f, path, "PETR4", "VALE3", "AAPL")
+	errorLineNaming(t, f, names, "PETR4", "VALE3", "AAPL")
 
 	// Then
 	assertRows(t, f, []string{"PETR4", "VALE3", "AAPL"}, nil)
@@ -291,19 +306,19 @@ func TestS11_10_ViewOpen_BrokenSaveKeepsTheWatchlist(t *testing.T) {
 // S11.11 Given the view is open, when the config file is saved with a syntax
 // error, then the error line names the file and the problem. (D45)
 func TestS11_11_ViewOpen_BrokenSaveNamedInTheErrorLine(t *testing.T) {
-	f, path := savedBroken(t)
+	f, names := savedBroken(t)
 
 	// Then: the spec fixes no wording for the problem: the line must say
 	// more than the path
-	line := errorLineNaming(t, f, path, "PETR4", "VALE3", "AAPL")
-	if strings.TrimSpace(strings.Trim(strings.ReplaceAll(line, path, ""), " :·-")) == "" {
+	line, name := errorLineNaming(t, f, names, "PETR4", "VALE3", "AAPL")
+	if name != "" && strings.TrimSpace(strings.Trim(strings.ReplaceAll(line, name, ""), " :·-")) == "" {
 		t.Errorf("the error line names the file but no problem: %q", line)
 	}
 }
 
 // deleted opens the view on plainConfig, then deletes the file and returns
 // the frame 5 seconds later and the path.
-func deleted(t *testing.T) (string, string) {
+func deleted(t *testing.T) (string, []string) {
 	t.Helper()
 	w := clockWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
@@ -312,7 +327,7 @@ func deleted(t *testing.T) (string, string) {
 		t.Fatalf("given not established: the watchlist is not shown:\n%s", f)
 	}
 	c.remove()
-	return c.within5s(), w.configPath
+	return c.within5s(), configNames(w)
 }
 
 // goneWords are ways to say that a file is gone.
@@ -321,11 +336,11 @@ var goneWords = []string{"gone", "missing", "deleted", "removed", "not found", "
 // S11.14 Given the view is open, when the config file is deleted, then the
 // view keeps the last loaded watchlist. (D50)
 func TestS11_14_ViewOpen_DeletedFileKeepsTheWatchlist(t *testing.T) {
-	f, path := deleted(t)
+	f, names := deleted(t)
 
 	// Given established: the view saw the deletion (6.4: the error line
 	// says the file is gone), so the rows it keeps are kept, not unseen
-	errorLineNaming(t, f, path, "PETR4", "VALE3", "AAPL")
+	errorLineNaming(t, f, names, "PETR4", "VALE3", "AAPL")
 
 	// Then: and not the example watchlist in its place
 	assertRows(t, f, []string{"PETR4", "VALE3", "AAPL"}, []string{"ITUB4", "MSFT"})
@@ -334,8 +349,8 @@ func TestS11_14_ViewOpen_DeletedFileKeepsTheWatchlist(t *testing.T) {
 // S11.19 Given the view is open, when the config file is deleted, then the
 // error line says the file is gone. (D50)
 func TestS11_19_ViewOpen_DeletedFileErrorLine(t *testing.T) {
-	f, path := deleted(t)
-	line := errorLineNaming(t, f, path, "PETR4", "VALE3", "AAPL")
+	f, names := deleted(t)
+	line, _ := errorLineNaming(t, f, names, "PETR4", "VALE3", "AAPL")
 	found := false
 	for _, wd := range goneWords {
 		if strings.Contains(strings.ToLower(line), wd) {
