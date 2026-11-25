@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D78), as updated with surface tags on every criterion, S17.4, S18 and D75–D77. Earlier approvals: D52, D67, D72. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D78, facts F1–F35).
+Status: approved, 2026-11-24 (D80), as updated for D79. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D80, facts F1–F35).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -338,7 +338,7 @@ B3 open · US closed · sort: file order · ? help
 - **No data yet.** `—` in every data column (D50).
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
 - **Closed market.** The status line gives the state of each market: `B3 open · US closed`. While the tool has no quote for any instrument of a market, the word is `unknown` (D74). Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
-- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt. The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
+- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
 - **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
 - **Language.** Interface text is in English (D50).
@@ -532,7 +532,7 @@ As the user, I want old prices kept and clearly marked when the source fails, so
 - **S6.6** [view, print] Given stale rows and an error line, when a refresh succeeds for every row, then the error line is gone. (D19)
 - **S6.7** [view] Given an open market and a row whose last successful fetch is older than two refresh intervals with no failed fetch since (the machine just woke from sleep), when the view is drawn, then the row is marked stale. (D40)
 - **S6.8** [view, print] Given a refresh in which one row fails and the others succeed, when the view is drawn, then only that row is marked stale. (D40)
-- **S6.9** [view, print] Given a failed refresh, when the error line is drawn, then it names the cause, the number of rows not updated and the time of the next attempt. (D50, D76)
+- **S6.9** [view, print] Given a failed refresh, when the error line is drawn, then it names the cause, the number of rows not updated and the time of the next attempt. (D50, D76, D79)
 - **S6.10** [view, print] Given a stale row whose last successful fetch was 12 minutes ago, when the row is drawn, then the mark reads `!12m`. (D50)
 
 ### S7 — Refresh now, and a source that is blocking
@@ -542,7 +542,7 @@ As the user, I want to force a refresh when it can help and be told when it cann
 - **S7.1** [view, print] Given B3 is open and the source answers, when `r` is pressed, then the first B3 rows are requested within 2 seconds, without waiting for the interval. (D32, D62)
 - **S7.2** [view, print] Given a network error has put the next automatic attempt four minutes away, when `r` is pressed, then the first failed rows are requested within 2 seconds. (D38, D62)
 - **S7.3** [view, print] Given the source is rate-limiting or refusing the tool, when `r` is pressed, then no request is sent. (D38)
-- **S7.4** [view, print] Given the source is rate-limiting or refusing the tool, when `r` is pressed, then the status line shows the time of the next attempt. (D38, D76)
+- **S7.4** [view, print] Given the source is rate-limiting or refusing the tool, when `r` is pressed, then the status line shows the time of the next attempt. (D38, D76, D79)
 - **S7.5** [view] Given the source refuses a request, when the view stays open and the source keeps refusing, then the next attempts come 5, 10, 20 and then every 30 minutes apart. (D50)
 - **S7.6** [view, print] Given a closed market, when `r` is pressed, then its rows are requested too. (D50)
 - **S7.7** [view, print] Given `r` was pressed two seconds ago, when `r` is pressed again, then no row is requested a second time. (D50)
@@ -813,6 +813,7 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P53 | In the one-shot table, a quote time not from today reads `DD/MM`, as in the view. This reads D50 (P21), which is worded without a surface, as holding for both | 8 (surfaces), S1.7 | settled as D75 |
 | P54 | In one-shot, the line on the error stream for a failed fetch or a block gives what the view's error line gives: it starts with the cause phrase (D71), then the number of rows not updated and the time of the next attempt; with several problems, one such line, chosen by the view's order (block, then failed fetches). 7.4 says only that the cause goes there; 6.3 says "the status line" for a forced one-shot call during a block, and this moves it to the error stream | 6.3, 7.4, S6.3, S6.9, S7.4 | settled as D76 |
 | P55 | `--help`, `--version` and the usage error for an unknown flag work both with and without the `print` command. 7.1 lists the flags without saying on which commands | 7, 7.1, S18 | settled as D77 |
+| P56 | The time of the next attempt, on the view's error line and on the one-shot error stream, reads `HH:MM` in the machine's local time, like a quote time from today. The 7.3 example shows it so, but examples are illustrative | 7.3, 7.4, S6.9, S7.4 | settled as D79 |
 
 ## 12. Open and unverified
 
@@ -908,3 +909,5 @@ Every decision in the log, and where the spec realises it.
 | D76 | 6.3, 7.4, 8 (surfaces), S6.9, S7.4 |
 | D77 | 7, 7.1, S18 |
 | D78 | process (approval of this spec, as updated) |
+| D79 | 7.3, 7.4, S6.9, S7.4 |
+| D80 | process (approval of this spec, as updated) |

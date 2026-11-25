@@ -120,11 +120,17 @@ func runPrint(ctx context.Context, o options, d deps.Deps) int {
 		fmt.Fprintln(d.Stderr, "brl-stocks: no data source")
 		return exitNotBuilt
 	}
-	eng := engine.Engine{P: d.Provider, C: cache.Files{Dir: cacheDir(d)}, Now: d.Now, After: d.After}
+	files := cache.Files{Dir: cacheDir(d)}
+	eng := engine.Engine{P: d.Provider, C: files, Now: d.Now, After: d.After}
 	res := eng.Cycle(ctx, engine.Request{
 		Want: cfg.Want(), Interval: cfg.Interval, ConfigMTime: mtime,
 		Force: o.refresh, Deadline: printDeadline, WaitForOthers: true,
 	})
+	if res.Warn == nil {
+		// A cycle with nothing due writes nothing, so it cannot have found
+		// out; the warning comes whenever the folder cannot be written (7.7).
+		res.Warn = files.Writable()
+	}
 	_, noColour := d.LookupEnv("NO_COLOR")
 	view := render.View{Cfg: cfg, Snap: res.Snap, Health: res.Health, Now: d.Now(), Colour: d.IsTTY && !noColour}
 	if o.json {

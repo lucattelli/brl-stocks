@@ -99,6 +99,21 @@ func (f Files) WriteSource(name string, h market.Health) error {
 	return f.replace(sourceName, s)
 }
 
+// Writable tells whether files can be kept in the folder, by creating and
+// removing a temp file there (spec 7.7: the warning comes whether or not a
+// write was due).
+func (f Files) Writable() error {
+	if err := os.MkdirAll(f.Dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(f.Dir, "probe.*.tmp")
+	if err != nil {
+		return err
+	}
+	_ = tmp.Close()
+	return os.Remove(tmp.Name())
+}
+
 // replace writes a temp file in the same folder and renames it over the
 // target, so a reader sees the old file or the new one, never half of one.
 func (f Files) replace(name string, v any) error {
