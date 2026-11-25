@@ -1,0 +1,38 @@
+# CI (D83): vet, the acceptance tests with the race detector, and the
+# ordinary verification run against the built tool. The slow and long
+# checks (BRL_VERIFY_SLOW, BRL_VERIFY_LONG) stay manual.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Go from mise.toml, as on the developer's machine; only Go is
+      # installed, not the model checker's tools.
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: go
+      - name: vet
+        run: mise exec -- go vet ./... && mise exec -- go vet -tags verification ./verification/
+      - name: acceptance tests
+        run: mise exec -- go test ./... -race -count=1
+      - name: verification (ordinary checks)
+        run: mise exec -- go test -tags verification ./verification/ -count=1 -timeout 10m
+      - name: keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-evidence
+          path: verification/evidence/
+          if-no-files-found: ignore
+          retention-days: 14
