@@ -103,6 +103,11 @@ Sources so far:
 | D79 | **The time of the next attempt reads `HH:MM` in the machine's local time**, on the view's error line and on the one-shot error stream, like a quote time from today. | Q77, recommendation accepted. Settles spec P56. Details D50 (P30) and D76. The built tool already does this. | 2026-11-24 |
 | D80 | **`docs/spec.md` is approved again**, as updated for D79. | Approved by the user after Q77. Replaces the approval of D78. Still open in the spec: Q62 (close, open and holidays), waiting on research. | 2026-11-24 |
 | D81 | **The error line counts rows of the watchlist only; when only summary entries failed, it says `summary not updated`** (for example `source unreachable: summary not updated · next attempt 10:43`). Holds for the view's error line and the one-shot error stream. | Q78, option (b), the recommendation. Details D50 (P30), D76 and the glossary's *Row* (D9). Found by verification: with every fetch failing, the line counted the three summary entries as rows (F37). Rejected: no line (a failing index is easy to miss); counting both (a longer line in the common case). For the spec. | 2026-11-24 |
+| D82 | **From slice 2 on, work lands as one PR per increment:** a scope-and-boundary PR with no product code; then per increment the failing tests in their own commit, the build, and the verification checks, with the evidence in the PR description; then a small closing PR. | Q79, option (a), the recommendation. Process. Rejected: one PR per slice (decisions mixed with code), one PR per step (a tests-only PR cannot pass CI). | 2026-11-24 |
+| D83 | **CI runs on every PR and on `main`:** `go vet`, the acceptance tests with the race detector and the ordinary verification run; Go from `mise.toml`. The slow and long checks stay manual and are named in the PR. CI is done when it has failed on a deliberately broken commit and passed on the fix. | Q80, recommendation accepted. Process; groundwork before slice 2. | 2026-11-24 |
+| D84 | **Everything reaches `main` through a PR, the log and the spec included;** branch protection requires a PR and a passing CI run. Claude opens PRs; the user merges them. | Q81, option (a), the recommendation. Process. Branch protection is set by the user, or by Claude only when asked. | 2026-11-24 |
+| D85 | **Each criterion of a slice belongs to exactly one increment,** grouped so that each increment reaches the edge, criteria sharing a setup go together, the order follows dependency, and each PR can be read in one sitting; the scope check confirms it; a larger increment is split by a proposal, not regrouped silently. | Q82, recommendation accepted. Process; for `story-to-tests` stage 0 at the next extraction. | 2026-11-24 |
+| D86 | **Verification drives the full-screen view through a pseudo-terminal written with the standard library and one small terminal-emulator library, used by `verification/` only.** The library is named, with its size, in slice 2's first PR for approval before it is added. | Q83, option (a), the recommendation. Design of the verification, not of the product. Rejected: writing an emulator (large, its bugs look like product faults), text in the raw stream (positions unverifiable), hand checks only (no lasting evidence). | 2026-11-24 |
 
 ## Facts learned
 
@@ -168,6 +173,8 @@ Q74–Q76 are answered (D75–D77).
 Open, from the increment-2 tests of the one-shot slice (`research/build/one-shot/increment-2/test-report.md`):
 Q77 is answered (D79).
 
+Q79–Q83 (how the build lands from slice 2 on) are answered: D82–D86.
+
 Waiting on research, not yet asked:
 - Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). Waits on the holiday check of F14 (2026-11-26) and on the closing-quote measurement in the backlog. F30 already shows that the 30 minutes after the close accepted in D50 (P31) are too short for B3, so Q62 will also have to revisit that number
 
@@ -191,6 +198,7 @@ _The product is built in slices: a group of acceptance criteria that reaches the
 | 2 | Full-screen view, static | S1; S2; S3.6; S4.1–S4.3; S9; S11.13, S11.18; S15.5, S15.6; S16 in the view | Not started | Next |
 | 3 | Live refresh in the view | S5; S6; S7; S8; S11.3, .4, .6, .10, .11, .14, .19; S15.3 | Not started | Needs Q62 answered before it is finished |
 | 4 | Sparkline | S10 | Not started | |
+| G1 | Groundwork: CI (D83) | — | In progress (PR `groundwork/ci`) | Done when it has failed on a planted fault and passed on the fix; then branch protection (D84) |
 
 ## Research backlog
 
