@@ -25,7 +25,7 @@ type View struct {
 
 // Colours of the terminal's own palette (D25, spec 7.3).
 const (
-	green = "\x1b[33m"
+	green = "\x1b[32m"
 	red   = "\x1b[31m"
 	reset = "\x1b[0m"
 )
