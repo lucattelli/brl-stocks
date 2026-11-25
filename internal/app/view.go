@@ -17,26 +17,40 @@ import (
 	"github.com/lucattelli/brl-stocks/internal/tui"
 )
 
-const exitTerminal = 1 // the terminal could not be used
+const exitTerminal = 1 // the terminal could not be used once the view had it
+
+// noTerminal is the one line for a view with no terminal (D94).
+const noTerminal = "brl-stocks: the full-screen view needs a terminal; for redirected output use `brl-stocks print`"
 
 // runView opens the full-screen view (spec 7.3): on d.Terminal when it is
 // set (the view's test boundary), otherwise on the process's own terminal.
+// With neither, it opens nothing (D94).
 func runView(ctx context.Context, o options, d deps.Deps) int {
-	cfg, mtime, notes, err := loadConfig(o.configPath, d)
+	if d.Terminal == nil && !d.IsTTY {
+		fmt.Fprintln(d.Stderr, noTerminal)
+		return exitUsage
+	}
+	cfg, mtime, notes, example, err := loadConfig(o.configPath, d)
 	if err != nil {
 		fmt.Fprintln(d.Stderr, "brl-stocks:", err)
 		return exitUsage
 	}
+	if example != "" {
+		// Short, to fit the status line (D95).
+		notes = append([]string{"no config: example watchlist; put yours at " + tilde(example, d)}, notes...)
+	}
+	dir := cacheDir(d)
 	if d.Provider == nil {
 		fmt.Fprintln(d.Stderr, "brl-stocks: no data source")
 		return exitNotBuilt
 	}
 	_, noColour := d.LookupEnv("NO_COLOR")
 	opts := tui.Options{
-		Engine:      &engine.Engine{P: d.Provider, C: cache.Files{Dir: cacheDir(d)}, Now: d.Now, After: d.After},
+		Engine:      &engine.Engine{P: d.Provider, C: cache.Files{Dir: dir}, Now: d.Now, After: d.After},
 		Cfg:         cfg,
 		ConfigMTime: mtime,
 		Notes:       notes,
+		Unwritable:  "quotes are not kept: " + tilde(dir, d) + " cannot be written",
 		Now:         d.Now,
 		Colour:      !noColour,
 	}

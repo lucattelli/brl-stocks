@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -28,7 +29,8 @@ type Options struct {
 	Engine      *engine.Engine
 	Cfg         config.Config
 	ConfigMTime time.Time
-	Notes       []string // warnings about the config, for the status line
+	Notes       []string // warnings about the config, for the status line, already short (D95)
+	Unwritable  string   // the warning for a cache folder that cannot be written, already short (D95)
 	Now         func() time.Time
 	Colour      bool // NO_COLOR is not set (D25)
 	Width       int  // the size when the view opens; 0 until the terminal says
@@ -188,8 +190,8 @@ func (m Model) render() render.View {
 // foot (error line and status line).
 func (m Model) layout() (head, list, foot []string) {
 	v := m.render()
-	if s := render.SummaryLine(v); s != "" {
-		head = append(head, s, "")
+	if len(v.Cfg.Summary) > 0 {
+		head = append(head, render.SummaryLine(v), "")
 	}
 	table := render.Lines(v)
 	head = append(head, table[0])
@@ -200,14 +202,24 @@ func (m Model) layout() (head, list, foot []string) {
 	if c := render.Cause(v); c != "" {
 		foot = append(foot, c)
 	}
-	status := []string{render.MarketLine(v), "sort: " + m.sort.String()}
-	status = append(status, m.o.Notes...)
+	warnings := append([]string{}, m.o.Notes...)
 	if m.unwritable {
 		// Said once, in the status line, for as long as it holds (7.7, D60).
-		status = append(status, "quotes are not kept: "+m.o.Engine.C.Dir+" cannot be written")
+		warnings = append(warnings, m.o.Unwritable)
 	}
-	foot = append(foot, strings.Join(status, " · "))
+	foot = append(foot, m.statusLine(render.MarketLine(v), warnings))
 	return head, list, foot
+}
+
+// statusLine is the market states, the current sort and the warnings. When
+// the whole line does not fit, the sort is left out before a warning is
+// cut (D95).
+func (m Model) statusLine(markets string, warnings []string) string {
+	whole := strings.Join(append([]string{markets, "sort: " + m.sort.String()}, warnings...), " · ")
+	if m.width <= 0 || utf8.RuneCountInString(whole) <= m.width || len(warnings) == 0 {
+		return whole
+	}
+	return strings.Join(append([]string{markets}, warnings...), " · ")
 }
 
 // room is how many lines of the list fit on the screen.
