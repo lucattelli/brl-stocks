@@ -251,6 +251,7 @@ type Frame struct {
 | Lip Gloss | The release that pairs with Bubble Tea 2; to confirm at the start of the build | Layout and colour from the terminal's palette | D27, D25 |
 | A TOML parser (`github.com/BurntSushi/toml` proposed) | To confirm at the start of the build | The config file | D28 |
 | `github.com/charmbracelet/x/vt` (proposed, pending approval) | v0.1.0 (2026-10-12) | A terminal emulator for `verification/` only: turns the view's output into the screen a person would see. About 4,000 lines; adds one small package beyond what Bubble Tea already brings | D86 |
+| `github.com/charmbracelet/x/term` (proposed 2026-11-25, pending approval) | v0.2.2, already in the build as a dependency of Bubble Tea | Tells whether standard output is a terminal for D94. The standard library's character-device test counts `/dev/null` as a terminal; a direct use adds no module | D94 |
 
 Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and number formatting by hand (`proposal-simplest.md`, section 4).
 
