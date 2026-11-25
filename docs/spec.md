@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D97, facts F1–F38).
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D98, facts F1–F40).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -202,7 +202,7 @@ The wait after failures (D50): after a row's n-th failed fetch in a row, its nex
 | Normal | A fetch fails for any other reason | Normal | Only the rows that failed are affected (6.2) | D19, D50 |
 | Normal | `r` is pressed | Normal | A refresh of every row starts within 2 seconds, including rows waiting after a network error and rows of closed markets; not-found rows keep their hourly wait | D32, D38, D39, D50, D62 |
 | Blocked | `r` is pressed, or a one-shot call asks for a forced fetch | Blocked | Nothing is fetched; the status line (view) or the line on the error stream (one-shot) says when the next attempt is | D38, D50, D76 |
-| Blocked | The wait ends and the source answers | Normal | Refresh resumes; the error line goes | D19, D50 |
+| Blocked | The wait ends and the first request after it is answered | Normal | Refresh resumes; the error line goes. A refusal later in that refresh is a new block, with a first wait of 5 minutes | D19, D50, D98 |
 | Blocked | The wait ends and the source refuses again | Blocked | The wait doubles, up to 30 minutes | D19, D50 |
 
 ### 6.4 Config file
@@ -943,3 +943,4 @@ Every decision in the log, and where the spec realises it.
 | D95 | 7.3, S12.6, S12.7, S12.8, S15.10 |
 | D96 | 7.3, S2.9, S2.10 |
 | D97 | process |
+| D98 | 6.3 |
