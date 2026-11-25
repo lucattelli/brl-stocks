@@ -21,7 +21,7 @@ Why the slice 3 ones are not here: each needs time to pass with the view open (a
 
 ## Increments
 
-All five built and verified on 2026-11-25 (F38): PRs #3 to #7.
+Increments 1–5 built and verified on 2026-11-25 (F38): PRs #3 to #7. Increment 6, added after the review (D97), builds the answers to Q84–Q88 in the PR on top of the stack.
 
 Grouped by D85: each reaches the edge (something on the screen changes), criteria with the same setup go together, the order follows what each needs from the one before, and each is one PR.
 
@@ -32,6 +32,7 @@ Grouped by D85: each reaches the edge (something on the screen changes), criteri
 | 3 | **Market states, stale rows, the error line, not-found rows.** The status line's market states; stale marks from the cache and from a failed fetch at start; the error line with its cause, count and next attempt | S5.4, S5.5, S5.6, S5.12, S6.1, S6.2, S6.3, S6.7, S6.8, S6.9, S6.10, S6.11, S8.1, S8.2, S8.5 (15) | Increments 1 and 2 |
 | 4 | **The rest of config, cache and source at start.** The default and XDG paths, through a link, never changed; errors at start; warnings and the example watchlist in the status line; the cache folder and an unwritable cache; the source not selectable | S11.1, S11.5, S11.7, S11.8, S11.9, S11.12, S11.13, S11.15, S11.16, S11.17, S11.18, S12.1, S12.2, S12.3, S12.4, S12.5, S15.2, S15.5, S15.6, S15.8, S17.3 (21) | Increment 3's status line |
 | 5 | **Narrow terminal and keys.** Columns dropped as the width shrinks; following a resize; sort, scroll, help; other keys do nothing; the summary line stays while scrolling | S1.6, S2.4, S9.2, S9.3, S9.4, S9.5, S9.6, S9.7, S9.8, S9.9, S9.10 (11) | Increments 1–3 |
+| 6 | **The review's answers (D92–D97).** The summary line on a narrow terminal; scrolling by screen lines; left and right do nothing; warnings shortened in the status line; no terminal | S2.9, S2.10, S9.11, S12.6, S12.7, S12.8, S15.10, S18.5, S18.6 (9 new), and S9.6, S9.7 reworded (their tests in increment 5 follow the new wording) | Increments 4 and 5 |
 
 Notes for the briefs:
 - Open or closed comes from the trading period the stand-in source returns with each quote, as for `print`; S5.4–S5.6 and S5.12 do not wait on Q62.

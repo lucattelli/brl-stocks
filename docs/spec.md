@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D81, facts F1–F35).
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D97, facts F1–F38).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -264,6 +264,8 @@ Every acceptance criterion in section 8 is tagged with the surfaces it applies t
 
 An unknown command or flag prints a usage message to the error stream and exits with status 2, with or without `print` (D50, D77).
 
+`brl-stocks` with no command needs a terminal. When it has none (its output is redirected, or there is no terminal at all), it writes one line to the error stream that names `brl-stocks print`, and exits with status 2 (D94).
+
 For testing only: when the environment variable `BRL_STOCKS_SOURCE_URL` is set, the default source is reached at that address. It does not appear in the help text and selects no other source (D70).
 
 ### 7.2 The config file
@@ -325,7 +327,7 @@ source unreachable: 1 row not updated · next attempt 10:43
 B3 open · US closed · sort: file order · ? help
 ```
 
-- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Its entries are labelled `IBOV`, `S&P 500` and `USD/BRL` (D71). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50). The Ibovespa is shown in whole points and the S&P 500 with two decimals, as the examples in D51 show them (D65). Each entry's percent follows the format of its entry (D51).
+- **Summary line.** Fixed above the watchlist; it does not scroll (D11). Its entries are labelled `IBOV`, `S&P 500` and `USD/BRL` (D71). Each entry shows its value and day change percent; indices carry no currency symbol; USD/BRL has four decimals (D50). The Ibovespa is shown in whole points and the S&P 500 with two decimals, as the examples in D51 show them (D65). Each entry's percent follows the format of its entry (D51). When the terminal is too narrow for the whole line, each entry's percent is left out first, then whole entries from the right; an entry is never cut (D96).
 - **Row.** Ticker, name, last price, day change (value and percent), day low and high, quote time (D9), then the sparkline (D13).
 - **Alignment.** In every row, the ticker and the name start at the same position; the last price, the change value, the percent, the low and the high each end at the same position; the quote time starts at the same position (D18, D71).
 - **Currency.** B3 prices carry `R$`, US prices `US$`; nothing is converted (D10).
@@ -339,7 +341,7 @@ B3 open · US closed · sort: file order · ? help
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
 - **Closed market.** The status line gives the state of each market: `B3 open · US closed`. While the tool has no quote for any instrument of a market, the word is `unknown` (D74). Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
 - **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). Summary entries are not rows and are not counted; when only summary entries failed, the line says `summary not updated` instead of a number (D81). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
-- **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50).
+- **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50). A warning is shortened to fit: the home folder is written `~`, and the wording is short, as in `no config: example watchlist; put yours at ~/.config/brl-stocks/config.toml`. When a warning still does not fit, the current sort is left out before the warning is cut (D95).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
 - **Language.** Interface text is in English (D50).
 
@@ -350,10 +352,10 @@ Keys (D32):
 | `q` | Quit, with exit status 0, leaving the terminal as it was found. Ctrl+C does the same | D32, D50 |
 | `r` | Refresh now (see 6.3) | D32, D38 |
 | `s` | Cycle the sort: file order → day change (percent, highest first) → ticker (A to Z) → file order | D31, D50 |
-| arrows, `j`/`k` | Scroll by one row when the rows do not fit | D32, D50 |
+| up and down arrows, `j`/`k` | Scroll by one screen line, a row or a group header alike, when the rows do not fit | D32, D50, D93 |
 | `?` | Show the list of keys; any key closes it | D32, D50 |
 
-Any other key does nothing while the help is closed (D32). Sorting works inside each group; groups keep the file's order; rows without a quote go last; the sort is not remembered between runs (D50).
+Any other key does nothing while the help is closed (D32); so do the left and right arrows (D92). Sorting works inside each group; groups keep the file's order; rows without a quote go last; the sort is not remembered between runs (D50).
 
 ### 7.4 One-shot table
 
@@ -481,6 +483,8 @@ As the user, I want the Ibovespa, the S&P 500 and USD/BRL always in sight, so th
 - **S2.6** [view, print] Given an S&P 500 value of 6812.4, when the summary line is drawn, then the S&P 500 value reads `6,812.40`. (D51, D65)
 - **S2.7** [view, print] Given a USD/BRL rate of 5.4321, when the summary line is drawn, then the USD/BRL value reads `5,4321`. (D50, D51)
 - **S2.8** [view, print] Given an Ibovespa day change of +0.32 percent, when the summary line is drawn, then its percent reads `+0,32%`. (D50, D51, D65)
+- **S2.9** [view] Given a terminal too narrow for the summary line with even one percent shown, but wide enough for all its entries without their percents, when the view is drawn, then each entry shows its label and value and no percent. (D96)
+- **S2.10** [view] Given a terminal too narrow for all summary entries even without their percents, when the view is drawn, then entries are left out from the right and every entry shown is whole. (D96)
 
 ### S3 — Two markets, plain tickers, own currency
 
@@ -569,11 +573,12 @@ As the user, I want to reorder and scroll the list with a few keys, so that I fi
 - **S9.3** [view] Given the order by day change, when `s` is pressed once, then rows are ordered by ticker. (D31)
 - **S9.4** [view] Given the order by ticker, when `s` is pressed once, then rows are back in file order. (D31, D50)
 - **S9.5** [view] Given two groups and the order by day change, when the view is drawn, then each group's rows run from the highest percent to the lowest. (D50)
-- **S9.6** [view] Given more rows than fit the screen, when the down arrow or `j` is pressed, then the list scrolls down by one row. (D32)
-- **S9.7** [view] Given more rows than fit the screen and a scrolled list, when the up arrow or `k` is pressed, then the list scrolls up by one row. (D32)
+- **S9.6** [view] Given more rows than fit the screen, when the down arrow or `j` is pressed, then the list scrolls down by one screen line, whether that line holds a row or a group header. (D32, D93)
+- **S9.7** [view] Given more rows than fit the screen and a scrolled list, when the up arrow or `k` is pressed, then the list scrolls up by one screen line, whether that line holds a row or a group header. (D32, D93)
 - **S9.8** [view] Given the view is open, when `?` is pressed, then the keys `q`, `r`, `s`, the scroll keys and `?` are listed with their actions. (D32)
 - **S9.9** [view] Given the view is open, when a key outside that list is pressed, then nothing changes. (D32)
 - **S9.10** [view] Given two groups and the order by day change, when the view is drawn, then the groups are still in file order. (D50)
+- **S9.11** [view] Given the view is open and the list scrolled, when the left or right arrow is pressed, then nothing changes. (D92)
 
 ### S10 — Sparkline
 
@@ -616,6 +621,9 @@ As a new user, I want the tool to run before I have written a config, so that I 
 - **S12.3** [view, print] Given no file at the default config path, when the tool has run in any mode and exited, then no file or folder has been created under the config path. (D35)
 - **S12.4** [view, print] Given `--config /tmp/missing.toml` and no such file, when the tool starts, then it exits with status 2. (D50)
 - **S12.5** [view, print] Given `--config /tmp/missing.toml` and no such file, when the tool starts, then a message on the error stream names the path. (D50)
+- **S12.6** [view] Given no file at the default config path, which is under the home folder, when the view is drawn, then the status line names the path with the home folder written `~`. (D95)
+- **S12.7** [view] Given no file at the default config path and a terminal too narrow for the whole status line but wide enough for it without the current sort, when the view is drawn, then the status line does not show the sort. (D95)
+- **S12.8** [view] Given no file at the default config path and a terminal too narrow for the whole status line but wide enough for it without the current sort, when the view is drawn, then the status line shows the whole warning. (D95)
 
 ### S13 — One-shot table
 
@@ -676,6 +684,7 @@ As the user, I want the last quotes kept between runs, so that the view starts w
 - **S15.7** [view, print] Given a cache file emptied or filled with garbage, when the tool starts, then no message about the cache is shown. (D48)
 - **S15.8** [view, print] Given a cache folder that cannot be written, when the tool runs, then one warning says the quotes will not be kept. (D50)
 - **S15.9** [print] Given a cache folder that cannot be written, when `brl-stocks print` is run, then no request is sent to the source. (D60)
+- **S15.10** [view] Given a cache folder under the home folder that cannot be written, when the view is drawn, then the warning in the status line names the folder with the home folder written `~`. (D95)
 
 ### S16 — Colour
 
@@ -703,6 +712,8 @@ As the user, I want the usual flags to work and a mistyped one to be refused, so
 - **S18.2** [view, print] Given `--help`, when the tool is run, then it prints the usage and exits with status 0. (D50, D77)
 - **S18.3** [view, print] Given a flag the tool does not know, when the tool is run, then it exits with status 2. (D50, D77)
 - **S18.4** [view, print] Given a flag the tool does not know, when the tool is run, then a usage message is on the error stream. (D50, D77)
+- **S18.5** [view] Given no terminal (the output is redirected), when `brl-stocks` is run with no command, then it exits with status 2. (D94)
+- **S18.6** [view] Given no terminal (the output is redirected), when `brl-stocks` is run with no command, then one line on the error stream names `brl-stocks print`. (D94)
 
 ## 9. Quality requirements
 
@@ -744,6 +755,7 @@ Not requirements of this spec. Input for the design phase.
 | The block record is kept in a file of its own | D56 |
 | No step layer between the UI library and the logic | D57 |
 | The design is in `docs/design.md` | D63 |
+| Verification drives the full-screen view through a pseudo-terminal and one small terminal-emulator library, used by verification only | D86 |
 
 ### Questions: technical choices the behaviour forces
 
@@ -880,7 +892,7 @@ Every decision in the log, and where the spec realises it.
 | D41 | 7.1, S13.1, S13.4 |
 | D42 | 7.2, S2.2, S2.3, S4.3, S5.2 |
 | D43 | 7.5, S14.3, S14.9–S14.11 |
-| D44 | 7.6, S14.4–S14.8 |
+| D44 | 7.6, S14.4–S14.8; its status 2 extended to the view without a terminal by D94 (7.1, S18.5) |
 | D45 | 6.4, 7.2, 7.6, S11.9–S11.11, S11.16, S14.8 |
 | D46 | 7.3, 7.4, S1.8–S1.10, S1.14, S1.15, S13.17, S13.18 |
 | D47 | 7.3, S5.5 |
@@ -913,3 +925,19 @@ Every decision in the log, and where the spec realises it.
 | D79 | 7.3, 7.4, S6.9, S7.4 |
 | D80 | process (approval of this spec, as updated) |
 | D81 | 7.3, S6.11 |
+| D82 | process (how the build is run and lands) |
+| D83 | process (how the build is run and lands) |
+| D84 | process (how the build is run and lands) |
+| D85 | process (how the build is run and lands) |
+| D86 | design, see the handover |
+| D87 | process (how the build is run and lands) |
+| D88 | process (how the build is run and lands) |
+| D89 | process (how the build is run and lands) |
+| D90 | process (how the build is run and lands) |
+| D91 | process (how the build is run and lands) |
+| D92 | 7.3, S9.11 |
+| D93 | 7.3, S9.6, S9.7 |
+| D94 | 7.1, S18.5, S18.6 |
+| D95 | 7.3, S12.6, S12.7, S12.8, S15.10 |
+| D96 | 7.3, S2.9, S2.10 |
+| D97 | process |
