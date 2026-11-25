@@ -185,7 +185,7 @@ The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a 
 
 - **Proposed:** `deps.Deps` gains one edge, `Terminal *deps.Terminal`. Outside tests it is nil, and `brl-stocks` with no command runs the view on the process's own terminal through Bubble Tea. In a test it holds the size when the view opens, a channel of inputs (a key, or a resize to a new size), and a function that receives every frame the view shows. `app.Run` returns when the view quits, with its exit status.
 - **The driver.** With a `Terminal`, `app` drives the same Bubble Tea model without the library's program loop, the way the loop does: messages are handled one at a time; each command the model returns runs in its own goroutine and its message comes back to the queue; after every update, `View()` becomes a frame for `Draw`. Every wait in the view goes through `deps.After` and every reading of the time through `deps.Now`, never the library's own ticks, so a test decides when time passes.
-- **Settling.** Each frame carries `Inputs`, the number of inputs handled so far, and `Idle`, true when every command still running is waiting on the source or on `After`. A test that must show that nothing changed takes the idle frame after input n, sends a key, and compares it with the idle frame after input n+1.
+- **Settling.** Each frame carries `Inputs`, the number of inputs handled so far, and `Idle`, true when no command is running except ones waiting on `After`. A request to the source in flight makes a frame not idle, so the idle frame after the view opens is the one after its fetch at start has been answered or has timed out (first test writer of slice 2: with the source counted as idle, that moment could only be guessed by waiting). A test that must show that nothing changed takes the idle frame after input n, sends a key, and compares it with the idle frame after input n+1.
 - **Frames.** `Lines` has exactly `Height` entries; a line is not padded, and holds at most `Width` terminal cells, counted after SGR codes are taken out (`—` and `▂` are one cell each). `app` cuts each line to the width; the library's renderer, which would otherwise do it, is not in the path. Colour uses only `ESC[32m` (green), `ESC[31m` (red) and `ESC[0m` (reset), from the terminal's own 16-colour palette as `print` does; the view uses no other SGR code. With `NO_COLOR` set, read through `deps.LookupEnv` only, a frame has no SGR code at all.
 - **Inputs.** Named keys are constants: `deps.KeyUp`, `KeyDown`, `KeyLeft`, `KeyRight`, `KeyEnter`, `KeyEsc`, `KeyTab`, `KeyCtrlC`. Any other key is one printable character, as itself (`"q"` and `"Q"` are different keys). A name that is neither makes `Run` panic, so a mistyped test fails loudly. The view reads inputs until it quits and then stops: a test sends on a buffered channel, or with a `select`. A closed channel means nothing more will come; the view keeps running. A cancelled `ctx` ends the view as `q` does, with exit status 0.
 - **`IsTTY`** is ignored with a `Terminal`: the view is always on a terminal.
@@ -208,7 +208,7 @@ type Frame struct {
     Width, Height int
     Lines  []string            // exactly Height lines; colour as SGR codes, nothing else
     Inputs int                 // inputs handled so far
-    Idle   bool                // every running command waits on the source or the timer
+    Idle   bool                // nothing is running except waits on the timer
 }
 ```
 

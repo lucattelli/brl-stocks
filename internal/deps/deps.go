@@ -59,5 +59,5 @@ type Frame struct {
 	// at all when NO_COLOR is set.
 	Lines  []string
 	Inputs int  // the number of inputs handled so far
-	Idle   bool // every command still running waits on the source or the timer
+	Idle   bool // nothing is running except waits on After; a request to the source in flight is not idle
 }
