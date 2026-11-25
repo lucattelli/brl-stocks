@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D80, facts F1–F35).
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D81, facts F1–F35).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -338,7 +338,7 @@ B3 open · US closed · sort: file order · ? help
 - **No data yet.** `—` in every data column (D50).
 - **Group header.** The group's name on its own line above its rows; tickers outside groups come first with no header (D16, D42).
 - **Closed market.** The status line gives the state of each market: `B3 open · US closed`. While the tool has no quote for any instrument of a market, the word is `unknown` (D74). Rows of a closed market show the last close; they are stale only if their last fetch failed (D15, D40, D47).
-- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
+- **Error line.** At most one line, whatever the number of problems (D19). It gives the cause, the number of rows affected and the time of the next attempt, as `HH:MM` in local time (D79). Summary entries are not rows and are not counted; when only summary entries failed, the line says `summary not updated` instead of a number (D81). The cause is one of four fixed phrases: `source unreachable` (no connection, timeout, server error), `source is rate-limiting`, `source refused access`, `source answer not understood` (D71). When several problems exist, it shows the first of: config problem, block, failed fetches. Not-found rows do not raise it (D50).
 - **Status line.** Market states, current sort, during a block the time of the next attempt, and any warning (D38, D47, D50).
 - **Narrow terminal.** Columns are dropped in this order as the width shrinks: sparkline, day low and high, name, day change value. Ticker, last price, day change percent and quote time always remain. The view follows a resize (D50).
 - **Language.** Interface text is in English (D50).
@@ -534,6 +534,7 @@ As the user, I want old prices kept and clearly marked when the source fails, so
 - **S6.8** [view, print] Given a refresh in which one row fails and the others succeed, when the view is drawn, then only that row is marked stale. (D40)
 - **S6.9** [view, print] Given a failed refresh, when the error line is drawn, then it names the cause, the number of rows not updated and the time of the next attempt. (D50, D76, D79)
 - **S6.10** [view, print] Given a stale row whose last successful fetch was 12 minutes ago, when the row is drawn, then the mark reads `!12m`. (D50)
+- **S6.11** [view, print] Given every row updates and a summary entry fails, when the view is drawn, then the error line says the summary was not updated. (D81)
 
 ### S7 — Refresh now, and a source that is blocking
 
@@ -911,3 +912,4 @@ Every decision in the log, and where the spec realises it.
 | D78 | process (approval of this spec, as updated) |
 | D79 | 7.3, 7.4, S6.9, S7.4 |
 | D80 | process (approval of this spec, as updated) |
+| D81 | 7.3, S6.11 |

@@ -41,3 +41,17 @@ Checked: `go vet` passes; the package passes with `-race` except S15.8; three te
 - S11.18, S15.8, S18.x, presence only: the spec fixes no wording; the tests assert no more than it says. No question.
 - Day change as price minus previous close: the boundary's quote type carries the previous close, and the domain's day change is against it. Kept.
 - S4.2, S4.3 (7.4's list of non-row lines), S8.5 (empty error stream, given "no other problem"), and the given checks: follow from the spec or guard against a vacuous pass. Kept.
+
+## Follow-up: D81 (S6.9 all-fail case, S6.11), same writer, resumed
+
+The agent's summary, unedited:
+
+> The new S6.11 test and both S6.9 cases pass. The whole internal/app package now passes, with 64 tests in my file, and go vet is clean.
+>
+> - S6.9: now has two subtests. In "two rows fail" the summary answers and the line must give 2. In "every fetch fails" all 3 rows and all 3 summary entries fail, and the line must give 3. In both, the line must also name `source unreachable` and the next attempt as `HH:MM`. To catch the fault, the test fails on any number in the line other than the row count, so a count of 6 would fail.
+> - S6.11 (TestS6_11_OnlySummaryFailedSaysSummaryNotUpdated): only the Ibovespa fails, and the test first checks that every row updated. Exactly one line on the error stream must give a cause, and it must contain `summary not updated`.
+> - S15.8: the case that failed before, a fresh cache with no fetch due, now passes too.
+>
+> Ambiguity: S6.11 doesn't say whether a cause phrase also appears on the line, so I only counted lines that give a cause. D79 now fixes the next-attempt time as `HH:MM`, which settles that earlier question.
+
+Coordinator's check: against the error-line code before the D81 fix, S6.9's "every fetch fails" case and S6.11 both fail; with the fix, the package passes with `-race`. The S6.11 ambiguity: D81's example starts with the cause phrase, so counting the lines that give a cause is right. No question.

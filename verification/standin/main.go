@@ -23,6 +23,7 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -58,6 +59,10 @@ type state struct {
 	// sequence number moves it by up to 9.96 (in steps of 0.01) from the
 	// synthetic price, and the day low and high follow it. Off by default.
 	VaryQuotes bool `json:"vary_quotes"`
+	// OpenEndUnix, when not 0, is the end (Unix seconds) of the regular session
+	// of every open market, in place of "four hours from now". Added for S5.12:
+	// a session that ends while the check runs.
+	OpenEndUnix int64 `json:"open_end_unix"`
 }
 
 // record is one request as the source saw it.
@@ -69,6 +74,11 @@ type record struct {
 	Symbol     string `json:"symbol"`
 	Query      string `json:"query"`
 	Status     int    `json:"status"` // status answered (0 = not yet, -1 = client went away)
+	// Added for QR12: what else the request carried.
+	Method  string              `json:"method,omitempty"`
+	Host    string              `json:"host,omitempty"`
+	Headers map[string][]string `json:"headers,omitempty"`
+	BodyLen int64               `json:"body_len,omitempty"`
 }
 
 type quote struct {
@@ -158,6 +168,7 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 	s.recs = append(s.recs, record{
 		Seq: seq, Time: now.UTC().Format(time.RFC3339Nano), UnixMS: now.UnixMilli(),
 		Symbol: symbol, Query: r.URL.RawQuery,
+		Method: r.Method, Host: r.Host, Headers: r.Header.Clone(), BodyLen: bodyLen(r),
 	})
 	st := s.st
 	s.mu.Unlock()
@@ -238,7 +249,13 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 	} else {
 		start = nowS - 2*3600
 		end = nowS + 4*3600
+		if st.OpenEndUnix != 0 {
+			end = st.OpenEndUnix
+		}
 		quoteTime = nowS - 30
+		if quoteTime > end {
+			quoteTime = end // the session given by open_end_unix is over
+		}
 	}
 
 	// A made-up intraday series from the previous close to the last price.
@@ -306,6 +323,7 @@ func main() {
 		s.recs = append(s.recs, record{
 			Seq: len(s.recs), Time: now.UTC().Format(time.RFC3339Nano), UnixMS: now.UnixMilli(),
 			AnsweredMS: now.UnixMilli(), Symbol: "(other path) " + r.URL.Path, Query: r.URL.RawQuery, Status: 404,
+			Method: r.Method, Host: r.Host, Headers: r.Header.Clone(), BodyLen: bodyLen(r),
 		})
 		s.mu.Unlock()
 		http.NotFound(w, r)
@@ -321,4 +339,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "standin:", err)
 		os.Exit(1)
 	}
+}
+
+// bodyLen reads and counts the request body (a GET is expected to carry none).
+func bodyLen(r *http.Request) int64 {
+	if r.Body == nil {
+		return 0
+	}
+	n, _ := io.Copy(io.Discard, r.Body)
+	return n
 }

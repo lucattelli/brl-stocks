@@ -49,6 +49,14 @@ The build tag `verification` keeps these checks out of the ordinary
   doubling of the wait, QR8), behind `BRL_VERIFY_SLOW` and `BRL_VERIFY_LONG`.
   They use the stand-in's `vary_quotes` control, which changes the price on
   every answer.
+- `surface_verify_test.go`: increment 2 of the one-shot slice (the criteria
+  tagged `print` that the first checks did not cover), QR1 and QR12. Where
+  several criteria observe one run, each criterion is a subtest named after
+  it (`.../S1_08`) and writes its own `CRITERION` and `RESULT` lines into the
+  run's evidence. Added to the stand-in for it, without changing the existing
+  controls: the request record also holds method, `Host`, headers and body
+  length, and the control `open_end_unix` sets when the open markets' session
+  ends.
 - `print_verify_test.go`: the checks. `TestMain` builds the tool and the
   stand-in once into a temporary folder. Each check starts a stand-in of its
   own on a free loopback port and runs the tool with a clean environment:
@@ -167,7 +175,7 @@ The build tag `verification` keeps these checks out of the ordinary
 | QR3 | `TestVerifyQR3_FreshCacheZeroRequestsWithin100ms` | As specified: 20 tickers, 3 summary entries, median of 10 runs. Runs alone (not parallel) |
 | QR4 | `TestVerifySlow_QR4_Full_PrintEveryTwoSecondsTenMinutes` (SLOW); also `TestVerifyQR4_Scaled_PrintEveryTwoSeconds`, `TestVerifyS13_22_23_TenPrintsOnEmptyCache` | Full size without the view (not built yet): `print` every 2 s for 10 min, open market, interval 60 s, 23 entries; asserts at most 345 in total. Run of 2026-11-24: 300 calls, 230 requests, 10 per entry for every entry |
 | QR5 | `TestVerifySlow_QR5_Full_And_W6_3_WaitDoubles` (SLOW); also `TestVerifyQR5_BlockUnderLoad`, `TestVerifyQR5_TenPrintsAgainstRefusingSource` | Full size without the view (not built yet): source refuses everything from the first request, `print --refresh` every 2 s for 16.5 min, 23 entries; any 10-minute window from the first refused answer. Run of 2026-11-24: 8 requests by the first call (all in flight at the first refusal), then one at +300.2 s and one at +901.9 s; at most 2 in a window counted after the first refusal |
-| QR8 | `TestVerifySlow_QR8_Scaled_CacheSizeTwentyMinutes` (SLOW), `TestVerifyLong_QR8_CacheSizeEightHours` (LONG) | Quotes change on every answer (`vary_quotes`), open market, 23 entries, `print` every interval + 1 s so each call fetches; cache size (sum of the regular files) after the first full refresh and after every call, each within 10%. SLOW is scaled: 20 min at interval 10 s (2026-11-24: 110 samples, first 20979 bytes, min 20866, max 21273). The 8-hour run at interval 60 s is to be started separately (`BRL_VERIFY_LONG=1`); it has not been run |
+| QR8 | `TestVerifySlow_QR8_Scaled_CacheSizeTwentyMinutes` (SLOW), `TestVerifyLong_QR8_CacheSizeEightHours` (LONG) | Quotes change on every answer (`vary_quotes`), open market, 23 entries, `print` every interval + 1 s so each call fetches; cache size (sum of the regular files) after the first full refresh and after every call, each within 10%. SLOW is scaled: 20 min at interval 10 s (2026-11-24: 110 samples, first 20979 bytes, min 20866, max 21273). The 8-hour run at interval 60 s is started separately (`BRL_VERIFY_LONG=1`): 2026-11-24 to 25: 8 h 0 min of open market, 472 samples, first 22150 bytes, min 21964 (−0.8%), max 22432 (+1.3%), 10856 requests after the first refresh (one per entry per call), PASS; evidence `verification/evidence/20261124T172137Z/` |
 | QR7 | `TestVerifyQR7_ConfigNeverTouched` | Config folder and `config.toml` are both symbolic links. In addition every check compares the config file's checksum around every run |
 
 ### From the workflows, not numbered criteria
@@ -197,3 +205,109 @@ The build tag `verification` keeps these checks out of the ordinary
   right after the close (6.1) is not explored.
 - The end of the hourly wait of a not-found row (6.5 row 1) and waits longer than one
   interval after repeated failures (6.2): they need more real time.
+
+## Feature map, increment 2 (`surface_verify_test.go`)
+
+The 63 criteria of increment 2 in `research/build/one-shot/scope.md`, each
+read on `print` as section 8's reading table says, plus QR1, QR10 and QR12.
+These rows take precedence over the earlier rows that called S3.6, S11.13 and
+S11.18 "not verified". With these checks the ordinary run takes about 1.5
+minutes. Run of 2026-11-25: 40 ordinary checks, 39 pass; of the 63 criteria,
+62 pass and S6.9 fails (below).
+
+"QR1" in a note means the check runs twice: with its own config and with the
+config padded to 20 tickers and the default 3 summary entries
+(`.../own_rows/...` and `.../20_tickers_QR1/...`).
+
+### S1 Row columns and number formats
+
+| Criterion | Check | Note |
+|---|---|---|
+| S1.2 | `TestVerifyS1_02_08_15_RowFormats/*/S1_2` | Header columns, and PETR4 and AAPL rows field by field; quote time `HH:MM`. QR1 |
+| S1.5 | `TestVerifyS1_05_NoCacheNoQuoteDashes` | "Until its first quote arrives" read as "no quote arrives during the call": no cache, status 503 and no connection. Every column after the ticker is `—` (7 of them) |
+| S1.7 | `TestVerifyS1_07_EarlierDayQuoteShowsDate` | US closed 2 days 1 hour ago; `DD/MM` of that day (child has `TZ=UTC`); B3 open as control (`HH:MM`) |
+| S1.8, S1.9 | `TestVerifyS1_02_08_15_RowFormats/*/S1_8`, `/S1_9` | Stand-in prices 1038.42 (BBDC4) and 1229.87 (NVDA). QR1 |
+| S1.10 to S1.13 | `TestVerifyS1_02_08_15_RowFormats/*/S1_10` ... `/S1_13` | PETR4 +0.31 and +0.81 %, AAPL -0.48 %, VALE3 zero. QR1 |
+| S1.14 | `TestVerifyS1_02_08_15_RowFormats/*/S1_14` | Stand-in price 38.425 (ABEV3). QR1 |
+| S1.15 | `TestVerifyS1_02_08_15_RowFormats/*/S1_15` | The low column and one currency symbol per row. QR1 |
+
+### S2 Summary line
+
+| Criterion | Check | Note |
+|---|---|---|
+| S2.1, S2.5 to S2.8 | `TestVerifyS2_01_05_08_DefaultSummaryLine/S2_1` ... `/S2_8` | One run without a `summary` key; the first line, above the header line |
+| S2.2 | `TestVerifyS2_02_SummaryOnlyUSDBRL` | |
+| S2.3 | `TestVerifyS2_03_EmptySummaryNoLine` | The header line is the first line with text |
+
+### S3.6, S4 and S9.1
+
+| Criterion | Check | Note |
+|---|---|---|
+| S3.6 | `TestVerifyS3_06_NoConversion` | Table (`R$ 38,42`, `US$ 229.87`) and JSON `currency` and `price` equal the stand-in's |
+| S4.1 | `TestVerifyS4_01_03_S9_01_GroupsAndOrder/*/S4_1`, `TestVerifyS4_01_GroupOrderFollowsFile` | Brasil then US, and US then Brasil, as in the file. QR1 |
+| S4.2 | `TestVerifyS4_02_NoGroupNoHeader` | Every line between the header line and the last line is a row. QR1 |
+| S4.3 | `TestVerifyS4_01_03_S9_01_GroupsAndOrder/*/S4_3` | QR1 |
+| S9.1 | `TestVerifyS4_01_03_S9_01_GroupsAndOrder/*/S9_1` | File order chosen to differ from both other sort orders. QR1 |
+
+### S5 Closed markets, stale marks, interval floor
+
+| Criterion | Check | Note |
+|---|---|---|
+| S5.4, S5.5 | `TestVerifyS5_04_05_USClosed` | US closed 2 h ago; the last line of the table |
+| S5.6 | `TestVerifyS5_06_ClosedMarketNoStaleByAge` | Scaled: the US quote is two days old, but its last successful fetch was 25 s ago (more than two intervals of 10 s), not two days ago. Two days cannot pass in a check, and the cache was not edited. Table and JSON `status` |
+| S5.10 | `TestVerifyS5_10_IntervalFloor` | As scope.md says: `refresh_seconds = 3`, `print` every 2 s for 32 s; the smallest gap between two requests for a symbol must be at least 10 s. 2026-11-25: 3 requests per row, 12 s apart |
+| S5.12 | `TestVerifyS5_12_FailedBeforeCloseStaysStale` | Stand-in control `open_end_unix`: the session ends 22 s after the first call; 503 from +12 s; at +27 s the last line reads `B3 closed · US closed` and the rows are stale (JSON `stale`, `closed`) |
+| S5.9, S5.11 | not in this increment | Wait on Q62 (scope.md) |
+
+### S6 Failed fetches
+
+| Criterion | Check | Note |
+|---|---|---|
+| S6.1, S6.2, S6.3 | `TestVerifyS6_01_02_03_09_FailedRefresh/*/*/S6_1`, `/S6_2`, `/S6_3` | Scaled: interval 10 s, cache 12 s old. Status 503 and no connection. S6.3 counts the error-stream lines that start with a cause phrase. QR1 |
+| S6.5, S6.6 | `TestVerifyS6_05_06_RecoveryClearsMarks` | Two calls (scope.md): a failing one, then 12 s later (past the wait of one interval) one that fetches every row with success |
+| S6.8 | `TestVerifyS6_08_OnlyFailedRowStale` | VALE3 answered 503, the rest 200. QR1 |
+| S6.9 | `TestVerifyS6_01_02_03_09_FailedRefresh/*/*/S6_9` (FAILS), `TestVerifyS6_09_OneRowNotUpdated` (passes) | With every row failing, the line counts the summary entries as rows: `source unreachable: 8 rows not updated · next attempt 00:25` for 5 rows (23 for 20). With one row failing it says `1 row`. Cause and `HH:MM` are right |
+| S6.10 | `TestVerifyS6_10_StaleMarkAge`; literal: `TestVerifySlow_S6_10_TwelveMinutes` (SLOW) | Scaled: 12 s, mark `!12s`. The 12-minute check (`BRL_VERIFY_SLOW=1 ... -run TestVerifySlow_S6_10`, about 13 min) has not been run yet. By hand: as the slow check does, `print`, then make the source fail, wait 12 minutes, `print` again and look for `!12m` |
+| S6.11 | `TestVerifyS6_11_SummaryEntryFails` | Added with D81. Empty cache, every ticker answers, `^GSPC` answered 503; one cause line starting `source unreachable` that holds `summary not updated` and no number (only the `HH:MM`) |
+
+### S7 Forced fetch (`print --refresh` for `r`)
+
+| Criterion | Check | Note |
+|---|---|---|
+| S7.1 | `TestVerifyS7_01_RefreshRequestsB3Within2s` | Default interval, cache 6 s old; measured from just before the process starts to the stand-in's arrival time. 2026-11-25: 8 ms |
+| S7.2 | `TestVerifyS7_02_RefreshDuringWait` | Scaled: one failure puts the next attempt 60 s away, not 4 min; a plain `print` in between sent nothing (control) |
+| S7.3, S7.4 | `TestVerifyS7_03_04_RefreshDuringBlock/{429,403}` | S7.4: the cause line's `HH:MM` is the first refused answer + 5 min (or the next minute) |
+| S7.6 | `TestVerifyS7_06_RefreshRequestsClosedMarket` | B3 closed 2 h ago |
+| S7.7 | `TestVerifyS7_07_SecondRefreshWithinTwoSeconds` | |
+| S7.8 | `TestVerifyS7_08_RefreshSkipsNotFound` | Scaled: tried 12 s ago, not 10 min |
+
+### S8 Not-found rows
+
+| Criterion | Check | Note |
+|---|---|---|
+| S8.1, S8.2, S8.5 | `TestVerifyS8_01_02_05_NotFound/*/S8_1`, `/S8_2`, `/S8_5` | Stand-in answers 404 for XXXX9. QR1 |
+| S8.4 | `TestVerifyS8_04_ConfigChangeRetriesNotFound` | Two calls with a change of content in between (AAPL added); a call on the unchanged config in between is the control |
+
+### S11, S14, S15, S17, S18
+
+| Criterion | Check | Note |
+|---|---|---|
+| S11.13, S11.18 | `TestVerifyS11_13_18_TwentyFiveTickers` | Warning observed: `25 tickers; the tool is designed for 20` |
+| S14.2, S14.9, S14.10 | `TestVerifyS14_02_09_10_RowObject` | S14.9 also the summary entries; S14.10 every time in the document |
+| S14.3 | `TestVerifyS14_03_SchemaVersion` | States `ok` and `error`, and a config error (exit 2) |
+| S14.8 | `TestVerifyS14_08_UnparsableConfigJSONExit2` | |
+| S14.11 | `TestVerifyS14_11_ClosedMarketState` | B3 open as control |
+| S15.2 | `TestVerifyS15_02_KeptFilesUnderHomeCache` | `XDG_CACHE_HOME` unset; every file left in the check's folders. Observed: `cache.v1.json` and `lock` |
+| S15.6 | `TestVerifyS15_06_RemovedTickerForgotten` | "No network": the stand-in stopped |
+| S15.8 | `TestVerifyS15_08_UnwritableCacheOneWarning` | `print` and `print --json`, folder mode 0555 |
+| S17.4 | `TestVerifyS17_04_HelpHidesSourceVariable` | `print --help` and `--help` |
+| S18.1, S18.2 | `TestVerifyS18_01_PrintVersion`, `TestVerifyS18_02_PrintHelp` | With `print` (D77) |
+| S18.3, S18.4 | `TestVerifyS18_03_04_PrintUnknownFlag` | `print --frobnicate`, `print -z` |
+
+### Quality requirements
+
+| Requirement | Check | Note |
+|---|---|---|
+| QR1 | the checks marked QR1 above | Run with 20 tickers and 3 summary entries: row formats (S1.2, S1.8 to S1.15), groups and order (S4.1 to S4.3, S9.1), failed fetches (S6.1 to S6.3, S6.8, S6.9), not-found rows (S8.1, S8.2, S8.5). Earlier: QR3, QR5. Not every criterion: the rest run with 2 to 6 tickers |
+| QR10 | not verified | Measured by S17.1, which needs the real source. By hand, on a machine with network (this calls Yahoo): `mise exec -- go build -o /tmp/brl-check/brl-stocks ./cmd/brl-stocks`, `mkdir -p /tmp/brl-check/home/.config/brl-stocks`, `printf 'tickers = ["PETR4", "AAPL"]\n' > /tmp/brl-check/home/.config/brl-stocks/config.toml`, then `env -i PATH=/usr/bin:/bin HOME=/tmp/brl-check/home /tmp/brl-check/brl-stocks print; echo "exit $?"` and the same with `print --json`. Expected: both rows with prices, no key or account asked for, exit 0 |
+| QR12 | `TestVerifyQR12_PrivacyOnTheWire` | `print`, `print --json`, `print --refresh` and `--config <other path> print`, with a not-found row; `USER`/`LOGNAME` set to a marker; `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (both cases) point at a local trap that records and refuses every connection. Asserted: only `GET /v8/finance/chart/<requested symbol>`, query only `interval` and `range`, no body, `Host` the source, no cookie, authorization, referer or forwarding headers, and nothing carrying the markers, the verifier's user and host name, the check's folders or the config's group name; the trap received no connection. 2026-11-25: headers `Accept-Encoding: gzip` and `User-Agent: Mozilla/5.0 (compatible; brl-stocks)` only. Does NOT prove: that the tool honours proxy settings at all (a source address that is not loopback would be needed to show it, and the checks refuse one), traffic that ignores proxy settings, name lookups (none are needed for `127.0.0.1`), or what is sent to the real source over TLS. By hand: run `brl-stocks print` against the real source while recording, e.g. `sudo tcpdump -i any -n 'not host 127.0.0.1'` (all destinations and DNS) or `strace -f -e trace=connect brl-stocks print` (neither tool is installed here) |

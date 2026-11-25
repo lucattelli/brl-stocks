@@ -934,33 +934,99 @@ func TestS6_8_OnlyTheFailedRowIsStale(t *testing.T) {
 // attempt. (D50, D76)
 // On print: the line on the error stream that gives the cause.
 func TestS6_9_ErrorLineNamesCauseCountAndNextAttempt(t *testing.T) {
-	// Given: two of three rows fail at 15:05 UTC; their next attempt comes one
-	// refresh interval later (6.2), at 15:06
+	// Summary entries are not rows and are not counted (7.3, D81).
+	cases := map[string]struct {
+		fail func(w *world)
+		rows string
+	}{
+		// two of three rows fail; the summary entries answer
+		"two rows fail": {func(w *world) {
+			w.src.fail(petr4, provider.Unavailable)
+			w.src.fail(vale3, provider.Unavailable)
+		}, "2"},
+		// every fetch fails: the 3 rows and the 3 summary entries
+		"every fetch fails": {func(w *world) { w.src.failAll(provider.Unavailable) }, "3"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Given: the fetches fail at 15:05 UTC; the next attempt comes one
+			// refresh interval later (6.2), at 15:06
+			w := newWorld(t, bothOpen, plainConfig)
+			loadQuotes(w.src, w.now, true)
+			w.prime(plainRows...)
+			w.advance(5 * time.Minute)
+			c.fail(w)
+			next := w.now.Add(60 * time.Second)
+
+			// When
+			r := w.runOK("print")
+
+			// Then
+			got := causeLines(r.stderr)
+			if len(got) != 1 {
+				t.Fatalf("%d lines of the error stream give a cause, want 1:\n%s", len(got), r.stderr)
+			}
+			line := got[0]
+			if !strings.Contains(line, "source unreachable") {
+				t.Errorf("the line does not name the cause `source unreachable`: %q", line)
+			}
+			numbers := regexp.MustCompile(`(^|[^0-9:])([0-9]+)([^0-9:]|$)`).FindAllStringSubmatch(line, -1)
+			found := false
+			for _, m := range numbers {
+				if m[2] != c.rows {
+					t.Errorf("the line gives the number %s, want only the number of rows not updated (%s): %q", m[2], c.rows, line)
+				} else {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("the line does not give the number of rows not updated (%s): %q", c.rows, line)
+			}
+			if !strings.Contains(line, hhmm(next)) {
+				t.Errorf("the line does not give the time of the next attempt (%s): %q", hhmm(next), line)
+			}
+		})
+	}
+}
+
+// S6.11 [view, print] Given every row updates and a summary entry fails, when
+// the view is drawn, then the error line says the summary was not updated.
+// (D81)
+// On print: the line on the error stream that gives a cause says
+// `summary not updated` (7.3).
+func TestS6_11_OnlySummaryFailedSaysSummaryNotUpdated(t *testing.T) {
+	// Given: every row and the summary in the cache; five minutes on, the
+	// Ibovespa alone fails
 	w := newWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
 	w.prime(plainRows...)
 	w.advance(5 * time.Minute)
-	w.src.fail(petr4, provider.Unavailable)
-	w.src.fail(vale3, provider.Unavailable)
-	next := w.now.Add(60 * time.Second)
+	w.src.fail(ibov, provider.Unavailable)
+	before := map[market.Instrument]int{}
+	for _, in := range append([]market.Instrument{ibov}, plainRows...) {
+		before[in] = w.src.count(in)
+	}
 
 	// When
 	r := w.runOK("print")
 
-	// Then
+	// Then: the given held (every row updated, the Ibovespa failed)
+	for in, n := range before {
+		if w.src.count(in) == n {
+			t.Fatalf("given not established: %s was not requested", in.Symbol)
+		}
+	}
+	for _, tk := range []string{"PETR4", "VALE3", "AAPL"} {
+		if line := rowLine(t, r.stdout, tk); strings.Contains(line, "!") {
+			t.Fatalf("given not established: row %s did not update: %q", tk, line)
+		}
+	}
 	got := causeLines(r.stderr)
 	if len(got) != 1 {
 		t.Fatalf("%d lines of the error stream give a cause, want 1:\n%s", len(got), r.stderr)
 	}
-	line := got[0]
-	if !strings.Contains(line, "source unreachable") {
-		t.Errorf("the line does not name the cause `source unreachable`: %q", line)
-	}
-	if !regexp.MustCompile(`(^|[^0-9:])2([^0-9:]|$)`).MatchString(line) {
-		t.Errorf("the line does not give the number of rows not updated (2): %q", line)
-	}
-	if !strings.Contains(line, hhmm(next)) {
-		t.Errorf("the line does not give the time of the next attempt (%s): %q", hhmm(next), line)
+	if !strings.Contains(got[0], "summary not updated") {
+		t.Errorf("the line giving the cause does not say `summary not updated`: %q", got[0])
 	}
 }
 

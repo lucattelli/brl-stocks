@@ -22,7 +22,7 @@ View-worded criteria read on `print` as section 8's reading table says.
 
 Also: the not-found row (TestW6_5_NotFound_*), now numbered as S8.1, S8.2 and S8.5; zero change has no colour (TestW7_3_*).
 
-## Increment 2: next
+## Increment 2: done (F36, F37)
 
 63 criteria with no test, to be written now; two more wait on Q62 (below). Where an increment-1 test already shows the same thing through another criterion, it is named: the new test is still written, one per criterion, so a failure names the requirement.
 
@@ -34,7 +34,7 @@ Also: the not-found row (TestW6_5_NotFound_*), now numbered as S8.1, S8.2 and S8
 | Groups and order | S4.1, S4.2, S4.3, S9.1 | S13.8 (S4.1) |
 | Closed markets and stale marks | S5.4, S5.5, S5.6, S5.12 | S13.12 (S5.4), S13.14 (S5.5) |
 | Interval floor | S5.10 | — |
-| Failed fetches | S6.1, S6.2, S6.3, S6.5, S6.6, S6.8, S6.9 (D76), S6.10 | S13.6 (S6.1, S6.2), S13.15 (S6.3) |
+| Failed fetches | S6.1, S6.2, S6.3, S6.5, S6.6, S6.8, S6.9 (D76, D81), S6.10, S6.11 (D81, added after verification) | S13.6 (S6.1, S6.2), S13.15 (S6.3) |
 | Forced fetch (`--refresh`) | S7.1, S7.2, S7.3, S7.4 (D76), S7.6, S7.7, S7.8 | Partly S13.4 (S7.1, without its 2 seconds); S13.10 (S7.3) |
 | Not-found rows | S8.1, S8.2, S8.4, S8.5 | TestW6_5_NotFound_* (S8.1, S8.2, S8.5; not S8.4) |
 | More than 20 tickers | S11.13, S11.18 | — |

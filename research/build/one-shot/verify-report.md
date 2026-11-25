@@ -45,7 +45,7 @@ That is the 5-minute wait, then the doubled 10-minute wait. At most 2 requests f
 - "From the first refused answer": requests sent before that answer are not "from" it; even counting them, a window holds 9, within the limit of 10. No question.
 - "One probe": the word came from the coordinator's brief, not the spec. The spec (6.3) says only what happens when the wait ends; how many requests that takes is bounded by QR5. No question.
 - "Once per interval" and "cache size": the verifier's readings (interval + 1 s; the sum of file sizes) follow from 6.5 and the plain meaning. No question.
-- The 8-hour run was started by the coordinator on 2026-11-24, on the fixed build.
+- The 8-hour run was started by the coordinator on 2026-11-24, on the fixed build. Result, 2026-11-24 to 25: 8 h 0 min of open market, 472 samples, first 22150 bytes, min 21964 (−0.8%), max 22432 (+1.3%), 10856 requests after the first refresh (one per entry per call), PASS; evidence `verification/evidence/20261124T172137Z/`. QR8 holds for `print`; S15.3 itself needs the view.
 
 ## Follow-up: S13.22–S13.24 and the criteria shared with other stories (same verifier, resumed)
 

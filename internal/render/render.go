@@ -233,7 +233,13 @@ func (v View) row(in market.Instrument) []string {
 // nothing is wrong (D19, D38, D50, D71).
 func Cause(v View) string {
 	want := v.want()
-	failed := 0
+	summary := map[market.Instrument]bool{}
+	for _, in := range v.Cfg.Summary {
+		summary[in] = true
+	}
+	// Rows are lines of the watchlist (D9); summary entries are counted
+	// apart and named only when no row failed (D81).
+	failed, failedSummary := 0, 0
 	var kind string
 	var next time.Time
 	for _, in := range want {
@@ -241,7 +247,11 @@ func Cause(v View) string {
 		if e.Fail == nil || e.Fail.Unknown() {
 			continue
 		}
-		failed++
+		if summary[in] {
+			failedSummary++
+		} else {
+			failed++
+		}
 		if kind == "" {
 			kind = e.Fail.Kind
 		}
@@ -254,7 +264,7 @@ func Cause(v View) string {
 	if blocked {
 		kind, next = blockKind, until
 	}
-	if failed == 0 && !blocked {
+	if failed == 0 && failedSummary == 0 && !blocked {
 		return ""
 	}
 	phrase := "source unreachable"
@@ -266,15 +276,18 @@ func Cause(v View) string {
 	case "bad_response":
 		phrase = "source answer not understood"
 	}
-	rows := "rows"
-	if failed == 1 {
-		rows = "row"
+	what := fmt.Sprintf("%d rows", failed)
+	switch {
+	case failed == 1:
+		what = "1 row"
+	case failed == 0 && failedSummary > 0:
+		what = "summary"
 	}
 	zone := v.Zone
 	if zone == nil {
 		zone = time.Local
 	}
-	return fmt.Sprintf("%s: %d %s not updated · next attempt %s", phrase, failed, rows, next.In(zone).Format("15:04"))
+	return fmt.Sprintf("%s: %s not updated · next attempt %s", phrase, what, next.In(zone).Format("15:04"))
 }
 
 // The JSON document of spec 7.5 (D43).
