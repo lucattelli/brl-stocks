@@ -6,11 +6,13 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/lucattelli/brl-stocks/internal/cache"
 	"github.com/lucattelli/brl-stocks/internal/config"
 	"github.com/lucattelli/brl-stocks/internal/engine"
 	"github.com/lucattelli/brl-stocks/internal/market"
@@ -40,6 +42,8 @@ type Model struct {
 	height int
 	snap   market.Snapshot
 	health market.Health
+	// unwritable: the cache folder could not be written at the last cycle
+	unwritable bool
 }
 
 // New makes the model of a view about to open.
@@ -86,6 +90,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case cycleDone:
 		m.snap = merge(m.snap, msg.res.Snap)
 		m.health = msg.res.Health
+		if w := msg.res.Warn; w != nil && !errors.Is(w, cache.ErrBusy) {
+			m.unwritable = true
+		}
 	}
 	return m, nil
 }
@@ -98,7 +105,16 @@ func (m Model) cycle() tea.Cmd {
 		Want: m.o.Cfg.Want(), Interval: m.o.Cfg.Interval, ConfigMTime: m.o.ConfigMTime,
 		Deadline: Deadline, MayFetchUnpaced: true,
 	}
-	return func() tea.Msg { return cycleDone{res: eng.Cycle(ctx, req)} }
+	return func() tea.Msg {
+		res := eng.Cycle(ctx, req)
+		if res.Warn == nil {
+			// A cycle with nothing due writes nothing, so it cannot have
+			// found out; the warning comes whenever the folder cannot be
+			// written (7.7).
+			res.Warn = eng.C.Writable()
+		}
+		return cycleDone{res: res}
+	}
 }
 
 // merge combines the rows in memory with the rows read or fetched, and never
@@ -146,6 +162,10 @@ func (m Model) View() tea.View {
 	}
 	status := []string{render.MarketLine(v), "sort: file order"}
 	status = append(status, m.o.Notes...)
+	if m.unwritable {
+		// Said once, in the status line, for as long as it holds (7.7, D60).
+		status = append(status, "quotes are not kept: "+m.o.Engine.C.Dir+" cannot be written")
+	}
 	foot = append(foot, strings.Join(status, " · "))
 
 	lines := body
