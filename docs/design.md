@@ -43,7 +43,7 @@ render           Rows, Table, JSON, Sparkline, number formats
 tui              the Bubble Tea model
 ```
 
-Imports run one way: `app → tui, engine, render, config`; `tui → engine, render, market, deps`; `engine → cache, provider, market`. Nothing imports `app`.
+Imports run one way: `app → tui, engine, render, config`; `tui → engine, render, config, market, deps`; `engine → cache, provider, market`. Nothing imports `app`.
 
 | Part | Responsibility | Serves | Decision |
 |---|---|---|---|
