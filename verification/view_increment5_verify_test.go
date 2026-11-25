@@ -9,10 +9,12 @@
 // arrows as a terminal sends them (CSI A/B, or SS3 A/B when the tool switched
 // on application cursor keys), `j`, `k`, `s`, `?`.
 //
-// Open questions, not checked as if decided: Q84 (whether left and right
-// arrows scroll) and Q85 (whether scrolling counts group header lines).
-// Scrolling is checked without groups; what left/right and group headers do
-// is recorded as an observation only. See README.md.
+// Q84 and Q85, open when this was written, were answered by D92 (left and
+// right arrows do nothing: S9.11) and D93 (scrolling moves by one screen
+// line, a row or a group header alike: S9.6 and S9.7 reworded). The scroll
+// check here has no groups, where rows and screen lines are the same; the
+// checks with group headers and of left and right are in
+// view_increment6_verify_test.go. See README.md.
 package verification
 
 import (
@@ -280,15 +282,18 @@ func TestVerifyView_S9_5_10_SortInsideGroups(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// S2.4, S9.6, S9.7 Scroll (no groups: Q85 is open)
+// S2.4, S9.6, S9.7 Scroll (no groups; with groups: increment 6)
 // ---------------------------------------------------------------------------
 
 // S9.6 [view] Given more rows than fit the screen, when the down arrow or `j`
-// is pressed, then the list scrolls down by one row. S9.7 ... a scrolled list,
-// when the up arrow or `k` is pressed, then the list scrolls up by one row.
+// is pressed, then the list scrolls down by one screen line, whether that line
+// holds a row or a group header. S9.7 ... a scrolled list, when the up arrow
+// or `k` is pressed, then the list scrolls up by one screen line (D93; with
+// no groups every screen line holds a row).
 // S2.4 Given more rows than fit the screen, when the user scrolls, then the
 // summary line stays in place. 25 tickers without groups on a 120 x 15
-// terminal. Observations only: left and right arrows (Q84).
+// terminal. Also recorded: left and right arrows (S9.11 is checked in
+// view_increment6_verify_test.go).
 func TestVerifyView_S2_4_S9_6_7_Scroll(t *testing.T) {
 	t.Parallel()
 	cfg := twentyFive()
@@ -316,7 +321,7 @@ func TestVerifyView_S2_4_S9_6_7_Scroll(t *testing.T) {
 	press([]byte("j"), "j")
 	press(v.arrow('A'), "up arrow")
 	press([]byte("k"), "k")
-	// Q84, observation only: left and right arrows on a scrolled list.
+	// Recorded only (S9.11 is checked in increment 6): left and right arrows.
 	press([]byte("j"), "j")
 	sRight, chRight := v.pressAndSettle(v.arrow('C'), "right arrow")
 	sLeft, chLeft := v.pressAndSettle(v.arrow('D'), "left arrow")
@@ -330,7 +335,7 @@ func TestVerifyView_S2_4_S9_6_7_Scroll(t *testing.T) {
 		}
 		return indexOf(all, vis[0])
 	}
-	e.logf("OBSERVED   (Q84) right arrow: screen changed %v, first row %d -> %d; left arrow: changed %v, first row -> %d\n",
+	e.logf("OBSERVED   (S9.11) right arrow: screen changed %v, first row %d -> %d; left arrow: changed %v, first row -> %d\n",
 		chRight, first(steps[len(steps)-1].s), first(sRight), chLeft, first(sLeft))
 	e.logf("OBSERVED   application cursor keys (DECCKM) switched on by the tool: %v\n", v.modes["1"])
 	wantFirst := []int{1, 2, 3, 2, 1, 2}
@@ -353,8 +358,8 @@ func TestVerifyView_S2_4_S9_6_7_Scroll(t *testing.T) {
 			}
 		})
 	}
-	moves("S9.6", "down arrow and `j` scroll down by one row", []int{0, 1, 2})
-	moves("S9.7", "up arrow and `k` scroll up by one row", []int{3, 4})
+	moves("S9.6", "down arrow and `j` scroll down by one screen line (no groups)", []int{0, 1, 2})
+	moves("S9.7", "up arrow and `k` scroll up by one screen line (no groups)", []int{3, 4})
 	crit(e, "S2.4", "the summary line stays in place while scrolling", func(c *ck) {
 		want := s0.lines[0]
 		if !ibovRE.MatchString(want) {
@@ -366,34 +371,6 @@ func TestVerifyView_S2_4_S9_6_7_Scroll(t *testing.T) {
 			}
 		}
 	})
-}
-
-// Q85, observation only: scrolling with group headers. 25 tickers in two
-// groups on a 120 x 15 terminal; `j` three times; what is at the top is
-// recorded, nothing is asserted.
-func TestVerifyView_Q85_ScrollWithGroups_Observation(t *testing.T) {
-	t.Parallel()
-	cfg := twentyFive()
-	cfg = cfgSpec{groups: []groupSpec{{"Brasil", cfg.top[:2]}, {"Outros", cfg.top[2:]}}}
-	e := newEnv(t, "Q85 observation: scrolling with group headers (nothing asserted)", cfg.String())
-	v := e.openViewSized(viewCols, 15, nil)
-	s, _ := v.waitStable("the first rows", 10*time.Second, 300*time.Millisecond, func(s screen) bool {
-		return len(s.rowLines("PETR4")) == 1 && hasQuote(s.rowLines("PETR4")[0])
-	})
-	top := func(s screen) string {
-		b := viewBody(s)
-		if len(b) == 0 {
-			return ""
-		}
-		return strings.Fields(b[0])[0]
-	}
-	e.logf("OBSERVED   (Q85) before scrolling, the first line under the column header: %q\n", top(s))
-	for i := 1; i <= 3; i++ {
-		s, _ = v.pressAndSettle([]byte("j"), "j")
-		e.logf("OBSERVED   (Q85) after j #%d, the first line under the column header: %q\n", i, top(s))
-	}
-	v.logScreen("SCREEN AFTER THREE j", s, nil)
-	v.quit([]byte("q"), "q")
 }
 
 // ---------------------------------------------------------------------------

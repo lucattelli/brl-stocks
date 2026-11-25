@@ -272,8 +272,11 @@ func TestVerifyView_S11_13_18_TwentyFiveTickers(t *testing.T) {
 // the path where a config file belongs. S12.3 ... when the tool has run and
 // exited, then no file or folder has been created under the config path.
 // 7.7: the example is PETR4, VALE3, ITUB4, AAPL, MSFT with the default summary
-// line, and the path is named in the status line. XDG_CONFIG_HOME set and
-// unset. A terminal of 200 columns, so that a long temporary path fits.
+// line, and the path is named in the status line. XDG_CONFIG_HOME set (to a
+// folder outside the home folder: the path is named in full, on a terminal of
+// 200 columns so that the long temporary path fits) and unset (the path is
+// under the home folder: since D95 it is written `~/.config/brl-stocks/
+// config.toml`, and the ordinary 120 columns are enough).
 func TestVerifyView_S12_1_3_NoConfig(t *testing.T) {
 	t.Parallel()
 	example := []string{"PETR4", "VALE3", "ITUB4", "AAPL", "MSFT"}
@@ -303,9 +306,13 @@ func TestVerifyView_S12_1_3_NoConfig(t *testing.T) {
 				return b.String()
 			}
 			before := list()
-			v := e.openViewSized(200, viewRows, nil)
+			named, cols := e.cfgPath, 200
+			if variant == "xdg_unset" {
+				named, cols = "~/.config/brl-stocks/config.toml", viewCols // D95
+			}
+			v := e.openViewSized(cols, viewRows, nil)
 			s, _ := v.waitStable("the example rows and the config path", 10*time.Second, 300*time.Millisecond, func(s screen) bool {
-				return rowsShown(example)(s) && s.contains(e.cfgPath)
+				return rowsShown(example)(s) && strings.Contains(statusLine(s), named)
 			})
 			v.logScreen("SCREEN BEFORE QUITTING", s, nil)
 			r := v.quit([]byte("q"), "q")
@@ -327,8 +334,8 @@ func TestVerifyView_S12_1_3_NoConfig(t *testing.T) {
 			})
 			crit(e, "S12.2", "the path where a config belongs is named", func(c *ck) {
 				st := statusLine(s)
-				if !strings.Contains(st, e.cfgPath) {
-					c.failf("want the status line to name %s, got %q", e.cfgPath, st)
+				if !strings.Contains(st, named) {
+					c.failf("want the status line to name %s, got %q", named, st)
 				}
 				c.notef("status line %q", st)
 			})
@@ -341,8 +348,10 @@ func TestVerifyView_S12_1_3_NoConfig(t *testing.T) {
 	}
 }
 
-// The same note at the ordinary width of 120 columns: logged, not asserted
-// (whether a long path must fit is not in the spec).
+// The same note at the ordinary width of 120 columns, with the config path
+// outside the home folder (so not shortened by D95): logged, not asserted.
+// How the warning is shortened and cut is checked by S12.7 and S12.8
+// (view_increment6_verify_test.go).
 func TestVerifyView_S12_2_PathAt120Columns(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, "S12.2 (view, 120 columns: observation)", "")
