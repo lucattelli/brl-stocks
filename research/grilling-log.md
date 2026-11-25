@@ -108,6 +108,11 @@ Sources so far:
 | D84 | **Everything reaches `main` through a PR, the log and the spec included;** branch protection requires a PR and a passing CI run. Claude opens PRs; the user merges them. | Q81, option (a), the recommendation. Process. Branch protection is set by the user, or by Claude only when asked. | 2026-11-24 |
 | D85 | **Each criterion of a slice belongs to exactly one increment,** grouped so that each increment reaches the edge, criteria sharing a setup go together, the order follows dependency, and each PR can be read in one sitting; the scope check confirms it; a larger increment is split by a proposal, not regrouped silently. | Q82, recommendation accepted. Process; for `story-to-tests` stage 0 at the next extraction. | 2026-11-24 |
 | D86 | **Verification drives the full-screen view through a pseudo-terminal written with the standard library and one small terminal-emulator library, used by `verification/` only.** The library is named, with its size, in slice 2's first PR for approval before it is added. | Q83, option (a), the recommendation. Design of the verification, not of the product. Rejected: writing an emulator (large, its bugs look like product faults), text in the raw stream (positions unverifiable), hand checks only (no lasting evidence). | 2026-11-24 |
+| D87 | **The build skills are split by job:** `plan-slice` (the slice, its increments, the boundary change with a critic, Build status, PR 0), `write-tests` (one increment's tests and findings), `build-increment` (one increment end to end: `write-tests`, a fresh builder, `create-verification`, the PR; the review round; and closing the slice after the last increment). | Q89, option (a), the recommendation. Process; changes the brl plugin. Rejected: keeping `story-to-tests` with four jobs and adding `build-increment` after it. | 2026-11-25 |
+| D88 | **`story-to-tests` is renamed `write-tests`,** cut down to the tests of one increment; its two evals move with it and to `plan-slice`. | Q92, option (a), the recommendation. Process. Tests are written per increment and per criterion, not per story. | 2026-11-25 |
+| D89 | **The review round is a stage of `build-increment`, and keeping old checks current is a stage of `create-verification`;** no `maintain-verification` skill. | Q93, recommendation accepted. Process. | 2026-11-25 |
+| D90 | **A boundary change found partway up a stack is made on the current increment's branch,** and its PR names the design section it changes. | Q90, option (a), the recommendation. Process. Rejected: fixing in the lowest open PR and rebasing the stack. | 2026-11-25 |
+| D91 | **Each agent that writes files works in its own git worktree;** the coordinator merges their commits onto the increment's branch. | Q91, option (a), the recommendation. Process. Rejected: one shared tree with care over which files each agent touches. | 2026-11-25 |
 
 ## Facts learned
 
@@ -176,6 +181,8 @@ Q77 is answered (D79).
 
 Q79–Q83 (how the build lands from slice 2 on) are answered: D82–D86.
 
+Q89–Q93 (how the build skills are split after slice 2) are answered: D87–D91.
+
 Open, from slice 2's test boundary (asked 2026-11-24 in PR 0, round 23):
 - Q84 — Do the left and right arrows scroll?
 - Q85 — Does scrolling by one row count group header lines?
@@ -198,7 +205,7 @@ Agreed order (2026-11-23, done; the current state is in "Build status"): Q43–Q
 
 ## Build status
 
-_The product is built in slices: a group of acceptance criteria that reaches the user's edge and is taken through four steps: tests from the spec (`story-to-tests`), build, verification of the built product (`create-verification`), findings handled. A criterion of a story shared by several slices belongs to the slice that first shows it._
+_The product is built in slices: a group of acceptance criteria that reaches the user's edge and is taken through four steps: tests from the spec (`story-to-tests`), build, verification of the built product (`create-verification`), findings handled. From slice 3 on (D87): `plan-slice` once per slice, then `build-increment` per increment, which runs `write-tests` and `create-verification`. A criterion of a story shared by several slices belongs to the slice that first shows it._
 
 | # | Slice | Criteria | Step | Open |
 |---|---|---|---|---|
