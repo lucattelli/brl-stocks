@@ -350,16 +350,12 @@ func (m Model) layout() (head, list, foot []string) {
 	if m.help {
 		head, list = nil, helpText
 	}
-	// One error line (S6.3): the config's problem first, then the source's.
-	var errs []string
+	// One error line, the first of: config problem, block, failed fetches
+	// (7.3); render.Cause orders the last two.
 	if m.cfgProblem != "" {
-		errs = append(errs, m.cfgProblem)
-	}
-	if c := render.Cause(v); c != "" {
-		errs = append(errs, c)
-	}
-	if len(errs) > 0 {
-		foot = append(foot, strings.Join(errs, " · "))
+		foot = append(foot, m.cfgProblem)
+	} else if c := render.Cause(v); c != "" {
+		foot = append(foot, c)
 	}
 	warnings := append([]string{}, m.o.Notes...)
 	if m.unwritable {
