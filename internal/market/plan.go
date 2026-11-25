@@ -1,6 +1,9 @@
 package market
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // The numbers of the protocol. The first group is behaviour (D39, D50); the
 // second is design (docs/design.md, section 4).
@@ -202,14 +205,28 @@ func FailureWait(interval time.Duration, failures int) time.Duration {
 	return w
 }
 
+// locations holds the zones already loaded, so that a draw does not read
+// the time-zone files again for every row.
+var locations sync.Map // string → *time.Location
+
+// location is the zone named tz, UTC when it is empty or unknown.
+func location(tz string) *time.Location {
+	if l, ok := locations.Load(tz); ok {
+		return l.(*time.Location)
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil || tz == "" {
+		loc = time.UTC
+	}
+	locations.Store(tz, loc)
+	return loc
+}
+
 // latestExpectedOpen gives the most recent moment, not after now, at which a
 // session like s would have started again: the same time of day on a later
 // weekday, in the exchange's zone.
 func latestExpectedOpen(s Session, now time.Time) (time.Time, bool) {
-	loc, err := time.LoadLocation(s.TZ)
-	if err != nil || s.TZ == "" {
-		loc = time.UTC
-	}
+	loc := location(s.TZ)
 	start := s.Start.In(loc)
 	var best time.Time
 	found := false
