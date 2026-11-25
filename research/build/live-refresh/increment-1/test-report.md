@@ -14,3 +14,5 @@ Returned 2026-11-25 for the test-writer section of `briefs.md` (a fresh agent). 
 - The readings follow 6.1, 6.2 and the scope's notes. No question.
 - The added expectations establish givens (time passed, the market's state) or guard a vacuous pass. Kept.
 - S5.3, S5.10 and S15.3: once built, the coordinator shows each failing on its own assertion by breaking the rule it depends on.
+- After the build, shown failing on their own assertions by the coordinator, each with one rule broken in the product and restored: S5.3 (closed markets refreshed every interval: "US row AAPL, its market closed for days, was requested 10 times … want none"); S5.10 (no 10-second floor: "row PETR4 was requested 4s after its previous request, want at least 10s"); S15.3 (a cache file that grows with every write: the size check fails).
+- S5.8's window was widened by the same writer to (t0+60s, t0+61s], following 6.5 (see `build-report.md`).
