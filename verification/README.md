@@ -588,3 +588,69 @@ narrow the window below 71 and 50 columns and watch the summary line; with
 groups, press `j` and `k` past a group header; press the left and right
 arrows; and `brl-stocks > /tmp/out.txt; echo $?` prints `2` with one line on
 the terminal).
+
+## Live refresh, slice 3 increment 1 (`refresh_increment1_verify_test.go`)
+
+The 8 criteria of increment 1 in `research/build/live-refresh/scope.md`
+(S5.1, S5.2, S5.3, S5.7, S5.8, S5.10, S8.3, S15.3), QR6, QR11 during a
+heartbeat refresh, and QR8 with the view, on the real view left open on a
+pseudo-terminal while **real** time passes (the tool's own clock; nothing is
+stepped from outside). Requests are counted from the stand-in's record by
+arrival time, within a window that starts when the process starts. `hold`
+keeps the view open for the criterion's time and samples the screen;
+it fails the check if the tool exits. Also shown again with the view open:
+S4.4, S5.4, S5.5. Run of 2026-11-25 (evidence `20261125T145015Z`): the ordinary run of all files, 3 min 39 s; 166 top-level checks pass, 0 fail, 12 skipped (SLOW and LONG); the 8 new ordinary checks, the 8 criteria (S8.3 partly), QR6 and QR11 pass.
+
+Added to the stand-in, without changing the existing controls:
+`opens_at_unix` (`{"b3": <unix>}`: before that time the market is closed and
+its last session was the same hours on the previous weekday, 7 h long; from
+then on it is open) and `quote_before_close_seconds` (the quote time of a
+market whose session is over lies that many seconds before the close).
+
+"Scaled" means the criterion's time was shortened, at the smallest interval
+(10 s) unless said otherwise.
+
+```sh
+# only these checks (about 3 min 20 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S5_|QR6_|QR11_KeysDuringHeartbeat)' -v
+# the literal 10-minute S5.1, S5.2 and QR6 (in parallel, about 10.5 min)
+BRL_VERIFY_SLOW=1 mise exec -- go test -tags verification ./verification/ -run 'TestVerifySlow_View_(S5|QR6)' -v -timeout 20m
+# QR8 / S15.3 with the view (8 h) and S8.3 (3 h), with the print QR8 run
+BRL_VERIFY_LONG=1 mise exec -- go test -tags verification ./verification/ -run TestVerifyLong -v -timeout 9h
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S5.1 | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S5_1`; literal: `TestVerifySlow_View_S5_1_DefaultIntervalTenMinutes` (SLOW) | Scaled: `refresh_seconds = 10` for 100 s (ten intervals, as 10 min are ten default intervals), so "no `refresh_seconds`" is only in the SLOW check, not run yet. Empty cache; the fetch at start counts. 2026-11-25: 10 each for PETR4 and VALE3 (+0 s, +10.01 s ... +90.07 s) |
+| S5.2 | `TestVerifyView_S5_2_IntervalFromConfig`; literal: `TestVerifySlow_View_S5_2_Interval120TenMinutes` (SLOW) | Scaled: `refresh_seconds = 20` for 100 s (five intervals). 2026-11-25: 5 for every row (+0, +20 s ... +80 s) |
+| S5.3 | `TestVerifyView_S5_3_ClosedMarketNotRequested/S5_3` | Scaled: 60 s in place of 10 min. US closed 2 h ago; `print` leaves a quote for every US row first; B3 open as control. 2026-11-25: AAPL, MSFT and ^GSPC 0; control PETR4 5 |
+| S5.4, S5.5 (shown again) | `TestVerifyView_S5_3_ClosedMarketNotRequested/S5_4`, `/S5_5` | After 60 s open: US rows show the close, no stale mark; `B3 open · US closed` |
+| S5.7 | `TestVerifyView_S5_7_NextSessionStarts` | B3's session starts 25 s after the view opens (`opens_at_unix`); last session the previous weekday. Skipped on a weekend (São Paulo). 2026-11-25: every B3 row first requested 0.4 s after the start (0.85 s in an earlier run); status line `B3 closed` then `B3 open`; no B3 request while closed |
+| S5.8 | `TestVerifyView_S5_8_RequestedAgainAfterClose/quote_before_close/S5_8` | B3 closed 60 s before each answer, quote time 10 min before the close; the second request at most 11 s after the first. 2026-11-25: every B3 row at +0, +10 s, +20 s |
+| S5.10 | `TestVerifyView_S5_10_IntervalFloor` | `refresh_seconds = 3`, 60 s: the shortest gap between two arrivals of one symbol at least 10 s (50 ms allowed), at most 7 per symbol. 2026-11-25: 6 per symbol, shortest gap 10.004 s; status line `... · refresh_seconds is below 10; using 10` |
+| S8.3 | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S8_3` (partial); `TestVerifyLong_View_S8_3_NotFoundThreeHours` (LONG) | Partial: in 100 s, XXXX9 (404) is asked for once (at start), not on every interval. The hour itself only in the 3-hour LONG check, not run yet |
+| S4.4 (shown again) | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S4_4` | PETR4 at the top and in two groups: as many requests as VALE3 (±1), never two within 5 s; shown in its three places |
+| S15.3 | `TestVerifyView_QR6_S15_3_HealthyThreeMinutes/S15_3`; `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | Scaled: 3 min at 10 s in place of 8 h. 20 tickers and 3 summary entries, quotes change on every answer (`vary_quotes`); the size (regular files under the cache folder) after the first full refresh, then every 10 s. 2026-11-25: first 22101 bytes, min 22032 (−0.3%), max 22312 (+1.0%), 18 samples, 410 requests after the first refresh. The 8-hour run (interval 60 s, sampled every minute) has not been run |
+
+| Requirement | Check | Note |
+|---|---|---|
+| QR6 | `TestVerifyView_QR6_S15_3_HealthyThreeMinutes/QR6`; literal: `TestVerifySlow_View_QR6_TenMinutes` (SLOW) | Scaled: 3 min in place of 10, sampled every 10 s, interval 10 s, 20 tickers. Every row has a price and no `!` age mark in every sample; PETR4's price changes on screen (set-up). 2026-11-25: 18 samples, no stale mark, PETR4 changed 17 times |
+| QR11 | `TestVerifyView_QR11_KeysDuringHeartbeatRefresh` | The view opens on a healthy source; the stand-in then answers after 5 s; when the first request of the next heartbeat refresh has arrived, `?`, `x`, `s`, `s` are pressed. Not parallel. 2026-11-25: 1 to 7 ms for each key, pressed 4 to 508 ms after the held request arrived, 8 requests of the refresh in flight. Until the emulator, not a real terminal's paint |
+| QR8 (view) | `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | As S15.3, 8 h (`BRL_VERIFY_LONG_DURATION`) at 60 s; also asserts QR6 every minute. Not run yet |
+
+Recorded outside the criteria: with B3 closed 60 s ago and the quote time at the close (`TestVerifyView_S5_8_RequestedAgainAfterClose/observation_quote_at_close`), the B3 rows are still requested every interval: a quote at the close does not end the period after the close (6.1 "the closing quote has arrived"; what counts as the closing quote waits on Q62). The heartbeat drifts by about 7 ms per interval (+90.07 s after nine intervals of 10 s), so each next refresh is timed from the end of the last, not from a fixed schedule; at 60 s over 8 h that is about 3.5 s, within S5.1's range.
+
+Not verified from outside, for these: the view left open overnight on a real
+terminal, across a real close and open of the markets; the 3- and 8-hour
+LONG checks and the 10-minute SLOW checks, not run here; whether a real
+source's closing quote ends the period after the close (Q62). Hand check:
+build the tool and the stand-in as in the hand check of the view above,
+leave `brl-stocks` open in a terminal window (`refresh_seconds = 10`) and
+watch, every few minutes, that the quote times move and no `!` mark appears;
+`curl -s http://127.0.0.1:18765/_requests | grep -c PETR4` grows by about
+6 a minute; switch B3 closed with
+`curl -X POST -d '{"closed_markets":["b3"]}' http://127.0.0.1:18765/_control`
+and watch the count stop growing after the period after the close; then
+`curl -X POST -d '{"opens_at_unix":{"b3":'$(( $(date +%s) + 60 ))'}}' http://127.0.0.1:18765/_control`
+and watch the status line turn to `B3 open` and the count grow again within
+about 70 s, with no key pressed.
