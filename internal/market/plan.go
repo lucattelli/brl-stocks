@@ -227,8 +227,10 @@ func latestExpectedOpen(s Session, now time.Time) (time.Time, bool) {
 }
 
 // MarketOpen reports whether a market is open: whether the newest session
-// among its instruments contains now (D47). known is false when no quote of
-// that market is at hand.
+// among its instruments contains now (D47), or the session expected after it
+// does, the same hours on a later weekday (spec 6.4: a closed market opens
+// when its next session starts, before any quote of it has come; holidays
+// wait on Q62). known is false when no quote of that market is at hand.
 func MarketOpen(m Market, want []Instrument, s Snapshot, now time.Time) (open, known bool) {
 	var newest Session
 	for _, w := range want {
@@ -240,7 +242,17 @@ func MarketOpen(m Market, want []Instrument, s Snapshot, now time.Time) (open, k
 			newest, known = e.Quote.Session, true
 		}
 	}
-	return known && !now.Before(newest.Start) && now.Before(newest.End), known
+	if !known {
+		return false, false
+	}
+	if !now.Before(newest.Start) && now.Before(newest.End) {
+		return true, true
+	}
+	if !now.After(newest.End) {
+		return false, true
+	}
+	start, ok := latestExpectedOpen(newest, now)
+	return ok && now.Before(start.Add(newest.End.Sub(newest.Start))), true
 }
 
 // State of a row on screen (spec 6.2).
