@@ -179,6 +179,7 @@ Open, from slice 2's test boundary (asked 2026-11-24 in PR 0, round 23):
 - Q84 — Do the left and right arrows scroll?
 - Q85 — Does scrolling by one row count group header lines?
 - Q86 — The exit status when the view cannot use the terminal (asked in increment 1's PR)
+- Q87 — A status-line warning longer than the screen is wide (asked in increment 4's PR)
 
 Waiting on research, not yet asked:
 - Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). Waits on the holiday check of F14 (2026-11-26) and on the closing-quote measurement in the backlog. F30 already shows that the 30 minutes after the close accepted in D50 (P31) are too short for B3, so Q62 will also have to revisit that number
