@@ -291,9 +291,9 @@ func TestVerifyView_S9_6_7_ScrollByScreenLine(t *testing.T) {
 		{"j", func() []byte { return []byte("j") }, 3},           // past it: a row
 		{"down arrow", func() []byte { return v.arrow('B') }, 4}, // the header Outros
 		{"j", func() []byte { return []byte("j") }, 5},
-		{"k", func() []byte { return []byte("k") }, 4},           // back onto the header Outros
-		{"up arrow", func() []byte { return v.arrow('A') }, 3},   // a row
-		{"k", func() []byte { return []byte("k") }, 2},           // the header Brasil
+		{"k", func() []byte { return []byte("k") }, 4},         // back onto the header Outros
+		{"up arrow", func() []byte { return v.arrow('A') }, 3}, // a row
+		{"k", func() []byte { return []byte("k") }, 2},         // the header Brasil
 		{"up arrow", func() []byte { return v.arrow('A') }, 1},
 		{"k", func() []byte { return []byte("k") }, 0},
 	}
