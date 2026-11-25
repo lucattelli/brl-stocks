@@ -140,6 +140,9 @@ func drive(ctx context.Context, opts tui.Options, term *deps.Terminal) int {
 				continue
 			}
 			inputs++
+			if in.Key == "" {
+				width, height = in.Width, in.Height
+			}
 			if handle(toMsg(in)) {
 				return end()
 			}
