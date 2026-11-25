@@ -311,3 +311,117 @@ config padded to 20 tickers and the default 3 summary entries
 | QR1 | the checks marked QR1 above | Run with 20 tickers and 3 summary entries: row formats (S1.2, S1.8 to S1.15), groups and order (S4.1 to S4.3, S9.1), failed fetches (S6.1 to S6.3, S6.8, S6.9), not-found rows (S8.1, S8.2, S8.5). Earlier: QR3, QR5. Not every criterion: the rest run with 2 to 6 tickers |
 | QR10 | not verified | Measured by S17.1, which needs the real source. By hand, on a machine with network (this calls Yahoo): `mise exec -- go build -o /tmp/brl-check/brl-stocks ./cmd/brl-stocks`, `mkdir -p /tmp/brl-check/home/.config/brl-stocks`, `printf 'tickers = ["PETR4", "AAPL"]\n' > /tmp/brl-check/home/.config/brl-stocks/config.toml`, then `env -i PATH=/usr/bin:/bin HOME=/tmp/brl-check/home /tmp/brl-check/brl-stocks print; echo "exit $?"` and the same with `print --json`. Expected: both rows with prices, no key or account asked for, exit 0 |
 | QR12 | `TestVerifyQR12_PrivacyOnTheWire` | `print`, `print --json`, `print --refresh` and `--config <other path> print`, with a not-found row; `USER`/`LOGNAME` set to a marker; `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (both cases) point at a local trap that records and refuses every connection. Asserted: only `GET /v8/finance/chart/<requested symbol>`, query only `interval` and `range`, no body, `Host` the source, no cookie, authorization, referer or forwarding headers, and nothing carrying the markers, the verifier's user and host name, the check's folders or the config's group name; the trap received no connection. 2026-11-25: headers `Accept-Encoding: gzip` and `User-Agent: Mozilla/5.0 (compatible; brl-stocks)` only. Does NOT prove: that the tool honours proxy settings at all (a source address that is not loopback would be needed to show it, and the checks refuse one), traffic that ignores proxy settings, name lookups (none are needed for `127.0.0.1`), or what is sent to the real source over TLS. By hand: run `brl-stocks print` against the real source while recording, e.g. `sudo tcpdump -i any -n 'not host 127.0.0.1'` (all destinations and DNS) or `strace -f -e trace=connect brl-stocks print` (neither tool is installed here) |
+
+## The full-screen view, slice 2 increment 1 (`view_verify_test.go`)
+
+The 35 criteria of increment 1 in `research/build/full-screen-view/scope.md`,
+plus QR1, QR2, QR7 and QR12, checked on the real view. Written from
+`docs/spec.md` (6, 7, 8's opening, the criteria, QR1, QR2, QR7, QR12), the
+scope and this folder, without reading the implementation. These rows take
+precedence over the earlier line "Everything about the full-screen view: no
+terminal is attached" for the criteria below. Run of 2026-11-25: the ordinary
+run of all files takes about 1 min 45 s; 117 top-level checks pass, 0 fail, 6
+skipped (SLOW and LONG); the 21 view checks pass, and so do the 35 criteria.
+
+```sh
+# only the view's checks (about 30 s)
+mise exec -- go test -tags verification ./verification/ -run TestVerifyView -v
+```
+
+### How the view is driven
+
+- `pty_linux_test.go` opens a pseudo-terminal with the standard library only:
+  `/dev/ptmx`, unlock (`TIOCSPTLCK`), the slave's number (`TIOCGPTN`), the size
+  with `TIOCSWINSZ` (120 x 40), and the mode read with `TCGETS` into
+  `syscall.Termios`. The slave is the child's stdin, stdout and stderr, and the
+  child is the leader of a new session with the slave as its controlling
+  terminal (`Setsid`, `Setctty`). The child's environment is that of the
+  one-shot checks (`newEnv`) plus `TERM=xterm-256color`. Linux only (build tags
+  `verification && linux`).
+- Everything the child writes is read from the master and fed into a terminal
+  emulator, `github.com/charmbracelet/x/vt` v0.1.0 (the only library added, used
+  only here), of the same size. What the emulator answers to the tool's queries
+  is written back to the master, as a real terminal does. The checks read the
+  emulator's cells: text, and each cell's foreground and background colour.
+- Keys are bytes written to the master: `q`, and `0x03` for Ctrl+C.
+- `waitFor` polls the emulated screen (on every write, and every 20 ms) until a
+  condition holds, with a real-time deadline that fails the check and puts the
+  last screen into the evidence; `waitStable` also waits until the screen has
+  not changed for 300 or 500 ms. No fixed sleep is the only wait.
+- After the key, `finish` waits at most 5 s for the exit, then until the
+  master has been quiet for 150 ms, and records: the exit status, the termios
+  before and after, whether the output entered and left the alternate screen
+  (the escape sequences, and the emulator's state), whether the cursor is
+  shown, any terminal mode the tool switched on and left on, the screen after
+  the exit, and the stand-in's record for the run. Every view run compares the
+  config's checksum before and after (QR7).
+- Evidence: `evidence/<run>/TestVerifyView_*.txt`, with the screen before the
+  key (numbered lines), the colours of the change cells, all of the above, and
+  each criterion's `CRITERION` / `RESULT` lines.
+- The terminal checks were shown to be able to fail: a throwaway check that
+  killed the view with SIGKILL in place of `q` saw the alternate screen still
+  on, the cursor hidden and the termios changed (not kept in the suite).
+
+### Feature map
+
+"QR1" in a note means the check runs twice: with its own config and with the
+config padded to 20 tickers and the default 3 summary entries.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S1.1 | `TestVerifyView_S1_1_OneRowPerTicker` | `PETR4`, `AAPL`; one line each with a price. The view uses the alternate screen |
+| S1.2 | `TestVerifyView_S1_2_S1_8_15_S16_1_2_RowFormatsAndColour/*/S1_2` | 120 columns read as "full width". Header and PETR4, AAPL field by field; `HH:MM`. No sparkline column yet (slice 4). QR1 |
+| S1.3 | `TestVerifyView_S1_3_QuitLeavesTerminal/{q,ctrl_c}` | Exit 0; alternate screen left; cursor shown; termios identical to before the run (`iflag`, `oflag`, `cflag`, `lflag`, speeds, `cc`). 2026-11-25: all hold for both keys, exit about 340 ms after start, no mode left on |
+| S1.4 | `TestVerifyView_S1_4_CachedRowsBeforeAnswer` | Cache left by `print`, 12 s old (interval 10 s); the stand-in then holds every answer 20 s and would answer other prices. Cached prices on screen at +29 ms with 8 requests sent and none answered |
+| S1.5 | `TestVerifyView_S1_5_NoCacheDashes` | No cache, answers held 20 s: every column after the ticker is `—` (7 of them); status line `B3 unknown · US unknown` |
+| S1.7 | `TestVerifyView_S1_7_EarlierDayDate` | US closed 2 days 1 hour ago: `DD/MM`; B3 `HH:MM` as control (`TZ=UTC`) |
+| S1.8 to S1.15 | `TestVerifyView_S1_2_S1_8_15_S16_1_2_RowFormatsAndColour/*/S1_8` ... `/S1_15` | Stand-in prices as in the one-shot checks (BBDC4 1038.42, NVDA 1229.87, ABEV3 38.425 ...). QR1 |
+| S3.1 to S3.5 | `TestVerifyView_S3_1_5_MarketOfATicker/S3_1` ... `/S3_5` | Nine tickers in one config. "Treated as B3/US" is read on the view as the currency of the price (`R$`/`US$`); the symbols asked of the stand-in are in the evidence (`PETR4F.SA`, `ABCD1`, `XYZ.SA` ...). Rows show the code without the prefix |
+| S3.6 | `TestVerifyView_S3_6_NoConversion` | PETR4 and AAPL price, low and high equal the stand-in's |
+| S3.7 | `TestVerifyView_S3_7_LowerCaseShownUpper` | `petr4` drawn as `PETR4`; `petr4` nowhere on screen |
+| S11.2 | `TestVerifyView_S11_2_ConfigFlag` | `--config <other>`; the watchlist at the default path is not shown |
+| S15.1 | `TestVerifyView_S15_1_QuotesKeptWithoutNetwork` | Both runs are the view; "no network" = the stand-in stopped |
+| S15.4, S15.7 | `TestVerifyView_S15_4_7_DamagedCache/{emptied,garbage}` | The cache left by a view run is damaged; with answers held, the screen equals that of a run on no cache; the word "cache" is not on the screen before or after the exit (the view's error stream is the terminal) |
+| S16.1, S16.2 | `TestVerifyView_S1_2_S1_8_15_S16_1_2_RowFormatsAndColour/*/S16_1`, `/S16_2` | Every cell of the change value and percent: PETR4 palette 2 (green), AAPL palette 1 (red); palette 10 and 9 (bright) would also pass. A zero change (VALE3) has no colour (7.3, observed). QR1 |
+| S16.3, S16.4 | `TestVerifyView_S16_3_4_NoColor/*/S16_3`, `/S16_4` | `NO_COLOR=1`: no SGR colour parameter (30-38, 40-48, 90-97, 100-107) anywhere in the output, no cell with a colour; changes start with `+`/`-`. QR1 |
+| S17.2 | `TestVerifyView_S17_2_StandInQuotes` | Distinctive stand-in prices (PETR4 12.34, MSFT 98.76) in the rows of the unchanged `baseConfig` |
+| S17.4 | `TestVerifyView_S17_4_HelpHidesSourceVariable` | `brl-stocks --help`, a plain command (no terminal) |
+| S18.1, S18.2 | `TestVerifyView_S18_1_Version`, `TestVerifyView_S18_2_Help` | Without `print` (D77), plain commands; no rows drawn, no request |
+| S18.3, S18.4 | `TestVerifyView_S18_3_4_UnknownFlag` | `--frobnicate` and `-z` without `print` |
+
+| Requirement | Check | Note |
+|---|---|---|
+| QR1 | the checks marked QR1 above | Row formats, colour and `NO_COLOR` with 20 tickers. The other view checks run with 1 to 9 tickers |
+| QR2 | `TestVerifyView_QR2_CachedRowsWithin300ms` | As specified: 20 tickers, cache left by `print`, answers then held so every price comes from the cache; from just before the process starts to the moment all 20 rows show a price on the emulated screen; median of 10 runs. Not parallel. 2026-11-25: median 28 ms (27 to 30 ms). Measures until the bytes reach the emulator, not a real terminal's paint |
+| QR7 | `TestVerifyView_QR7_ConfigNeverTouched`, and every view run | Config folder and file both symbolic links; three view runs (`q`, Ctrl+C, `--config` naming the link); links, target, checksum, mtime and folder entries unchanged |
+| QR12 | `TestVerifyView_QR12_PrivacyOnTheWire` | Same recording, markers and proxy trap as `TestVerifyQR12_PrivacyOnTheWire`, for two view runs (default path, `--config` elsewhere) with a not-found ticker. 2026-11-25: 14 requests, headers `Accept-Encoding: gzip` and `User-Agent: Mozilla/5.0 (compatible; brl-stocks)` only; no connection to the trap. Does not prove what that check does not prove (proxy honoured at all, traffic outside proxies, DNS, TLS to the real source) |
+
+### Not verified from outside, and the hand checks
+
+- **The look on a real terminal** (layout, alignment, colours in the user's
+  palette, that the screen comes back as it was): the emulator is one terminal,
+  not the user's. "The terminal palette's green" is verified as palette index 2;
+  the hue is the terminal's. By hand, on a real terminal:
+
+  ```sh
+  mkdir -p /tmp/brl-view/cfg/brl-stocks /tmp/brl-view/cache
+  mise exec -- go build -o /tmp/brl-view/brl-stocks ./cmd/brl-stocks
+  mise exec -- go build -o /tmp/brl-view/standin ./verification/standin
+  /tmp/brl-view/standin -addr 127.0.0.1:18765 &
+  printf 'tickers = ["PETR4", "AAPL"]\n[[group]]\nname = "Brasil"\ntickers = ["VALE3", "ITUB4"]\n' > /tmp/brl-view/cfg/brl-stocks/config.toml
+  stty -a > /tmp/brl-view/stty.before
+  BRL_STOCKS_SOURCE_URL=http://127.0.0.1:18765 XDG_CONFIG_HOME=/tmp/brl-view/cfg XDG_CACHE_HOME=/tmp/brl-view/cache /tmp/brl-view/brl-stocks; echo "exit $?"
+  stty -a | diff /tmp/brl-view/stty.before - && echo "terminal mode unchanged"
+  ```
+
+  Expected: PETR4 `+0,31 +0,81%` in green, AAPL `-1.12 -0.48%` in red, VALE3
+  `+0,00` uncoloured; `q` (and, on a second run, Ctrl+C) gives `exit 0`, the
+  shell's earlier output back, a visible cursor, typing echoes, and no `stty`
+  difference. With `NO_COLOR=1` before the command: no colour. Kill the
+  stand-in afterwards (`kill %1`).
+- **S1.3 on other terminals** than the emulator: the termios and escape checks
+  hold for any terminal, but a terminal that reacts differently to the tool's
+  queries is not covered. Hand check above, in the terminals the user has.
+- **S15.1 with a real network outage**: "no network" is a stopped stand-in.
+- **S17.1 / QR10** (the real source) for the view: as the QR10 hand check
+  above, with `brl-stocks` in place of `print`, on a terminal.
