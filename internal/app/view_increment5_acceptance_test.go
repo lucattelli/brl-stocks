@@ -5,9 +5,10 @@ package app_test
 // docs/spec.md and the view's test boundary; they reuse the helpers of the
 // earlier view tests and of the print acceptance tests.
 //
-// Two questions are open and not guessed here: Q84 (whether left and right
-// scroll) and Q85 (whether scrolling by one row counts group header lines).
-// The scroll tests use a watchlist without groups and only up, down, j, k.
+// When these tests were written, Q84 (whether left and right scroll) and Q85
+// (whether scrolling by one row counts group header lines) were open. They
+// are answered (D92, D93): S9.6 and S9.7 below were updated in increment 6,
+// and S9.11 is in view_increment6_acceptance_test.go.
 
 import (
 	"strconv"
