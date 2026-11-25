@@ -198,7 +198,7 @@ _The product is built in slices: a group of acceptance criteria that reaches the
 | 2 | Full-screen view, static | S1; S2; S3.6; S4.1–S4.3; S9; S11.13, S11.18; S15.5, S15.6; S16 in the view | Not started | Next |
 | 3 | Live refresh in the view | S5; S6; S7; S8; S11.3, .4, .6, .10, .11, .14, .19; S15.3 | Not started | Needs Q62 answered before it is finished |
 | 4 | Sparkline | S10 | Not started | |
-| G1 | Groundwork: CI (D83) | — | In progress (PR `groundwork/ci`) | Done when it has failed on a planted fault and passed on the fix; then branch protection (D84) |
+| G1 | Groundwork: CI (D83) | — | Done 2026-11-24 (PR #1): passed; failed on a planted fault (wrong green, caught by TestS16_1); passed on the revert | Branch protection on `main` (D84), set by the user |
 
 ## Research backlog
 
