@@ -188,6 +188,13 @@ The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a 
 - **Settling.** Each frame carries `Inputs`, the number of inputs handled so far, and `Idle`, true when no command is running except ones waiting on `After`. A request to the source in flight makes a frame not idle, so the idle frame after the view opens is the one after its fetch at start has been answered or has timed out (first test writer of slice 2: with the source counted as idle, that moment could only be guessed by waiting). A test that must show that nothing changed takes the idle frame after input n, sends a key, and compares it with the idle frame after input n+1.
 - **Frames.** `Lines` has exactly `Height` entries; a line is not padded, and holds at most `Width` terminal cells, counted after SGR codes are taken out (`—` and `▂` are one cell each). `app` cuts each line to the width; the library's renderer, which would otherwise do it, is not in the path. Colour uses only `ESC[32m` (green), `ESC[31m` (red) and `ESC[0m` (reset), from the terminal's own 16-colour palette as `print` does; the view uses no other SGR code. With `NO_COLOR` set, read through `deps.LookupEnv` only, a frame has no SGR code at all.
 - **Inputs.** Named keys are constants: `deps.KeyUp`, `KeyDown`, `KeyLeft`, `KeyRight`, `KeyEnter`, `KeyEsc`, `KeyTab`, `KeyCtrlC`. Any other key is one printable character, as itself (`"q"` and `"Q"` are different keys). A name that is neither makes `Run` panic, so a mistyped test fails loudly. The view reads inputs until it quits and then stops: a test sends on a buffered channel, or with a `select`. A closed channel means nothing more will come; the view keeps running. A cancelled `ctx` ends the view as `q` does, with exit status 0.
+- **Time (proposed 2026-11-25 for slice 3, pending approval in its first PR; reworked after its critic).** `Terminal` gains `Clock *deps.Clock`. A test makes one with `deps.NewClock(start)` and gives the same clock to the view and to its stand-in source, which may read `Now` to stamp what it receives. The source never waits on the clock: it answers at once, fails at once, or holds its answer as in slice 2. With a `Terminal` and a `Clock`, the view, the engine it runs and the cache read the time and wait only through that clock; `Deps.Now` and `Deps.After` are not used. Only the driver moves the clock, and only when the test sends `Input{Elapse: d}`; without one the clock stands still, and with no `Clock` the view uses `Deps.Now` and `Deps.After` as in slice 2, so slice 2's tests are unchanged.
+  - **An Elapse** runs from the clock's time t to t+d. While a wait on the clock falls due by t+d, the driver moves the clock to the earliest one (ties in the order the waits were made), fires it, and lets what it started settle before the next; waits made meanwhile fire too if they fall due by t+d. Then the clock stands at t+d. Settled means nothing is running except the view's own waits on the clock (the heartbeat, a row's next attempt): a request to the source, and everything the engine does for it, is running until it returns. A source that holds its answer therefore holds the clock, and the Elapse does not end until the source answers; no criterion of slice 3 needs a slow source (S7.9's "a source that answers within one second" includes one that answers at once). Splitting an Elapse into smaller ones gives the same result.
+  - **Inputs and frames.** An Elapse is counted in `Inputs`, and its frame can be idle, only once the clock stands at t+d and everything has settled: the idle frame after input n+1 is the screen after d. Frames drawn during an Elapse still carry n. Each frame carries `Now`, the clock when it was drawn.
+  - **Heartbeat.** The view's heartbeat is a wait of one second on the clock; at each heartbeat it checks the config file (C2), so a file saved at clock time T is seen by T+1s.
+  - **Files.** Every file the test writes while it uses a clock, the first config included, gets its modification time set by the test to the clock's `Now` (`os.Chtimes`, which follows a symbolic link to its target, as the view's `os.Stat` does). Two saves are a clock step apart. "The file is newer than a row's last attempt" is then decided on one clock, and newer means strictly later; outside tests both are wall-clock times.
+  - **Why a clock the driver moves:** with the test's own timer, a test that fires two waits cannot tell the idle frame after the first from the one after both, because nothing tells the driver that a fired wait is about to wake. With the clock moved by the driver, firing a wait and letting it settle are one step of its loop.
+  - **Verification covers** real time: the heartbeat against the wall clock, a machine that sleeps and wakes, and QR4, QR5, QR6, QR8 and QR11 with the view open.
 - **`IsTTY`** is ignored with a `Terminal`: the view is always on a terminal. Without a `Terminal`, `IsTTY` false means the process has no terminal for the view (its output is redirected, or there is none): `Run` writes the one line of D94 to `Stderr` and returns 2 without opening anything. A test of S18.5 and S18.6 leaves `Terminal` nil and `IsTTY` false. (Added 2026-11-25 for D94, in slice 2's review PR, by D90.)
 - **Serves:** slice 2's acceptance tests through the same entry point as `print` (S1, S2, S4, S9, S16 in the view, QR11); a test writer needs no knowledge of the library.
 - **Rejected:** tests on the model's messages (the consequence written under D58), which couple the tests to the library's types; tests on the raw output through a pseudo-terminal, which needs a terminal emulator in every test and is what verification does (D86).
@@ -199,17 +206,21 @@ type Terminal struct {
     Width, Height int          // the size when the view opens
     Input <-chan Input         // keys and resizes, in order
     Draw  func(Frame)          // called with every frame
+    Clock *Clock               // the view's only clock, moved by Elapse (slice 3, proposed)
 }
 type Input struct {
-    Key           string       // a Key... constant, or one printable character
-    Width, Height int          // a resize, when Key is ""
+    Key           string        // a Key... constant, or one printable character
+    Width, Height int           // a resize, when Key is ""
+    Elapse        time.Duration // a time step on Terminal.Clock (slice 3, proposed)
 }
 type Frame struct {
     Width, Height int
     Lines  []string            // exactly Height lines; colour as SGR codes, nothing else
+    Now    time.Time           // the view's clock when drawn (slice 3, proposed)
     Inputs int                 // inputs handled so far
-    Idle   bool                // nothing is running except waits on the timer
+    Idle   bool                // nothing is running except the view's own waits
 }
+// Clock (slice 3, proposed): NewClock(start), Now(), After(d); Step is the driver's.
 ```
 
 ### Platforms (D59)

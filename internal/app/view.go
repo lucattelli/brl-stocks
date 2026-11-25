@@ -154,6 +154,12 @@ func drive(ctx context.Context, opts tui.Options, term *deps.Terminal) int {
 				continue
 			}
 			inputs++
+			if in.Elapse != 0 {
+				// Time steps are slice 3 (design: the view's test boundary,
+				// "Time"); not built yet, so the clock does not move.
+				draw()
+				continue
+			}
 			if in.Key == "" {
 				width, height = in.Width, in.Height
 			}

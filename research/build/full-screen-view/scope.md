@@ -12,8 +12,8 @@ Written 2026-11-24 from the spec's surface tags (D78, D80, D81): the criteria ta
 
 | Slice | Criteria | Count |
 |---|---|---|
-| 2, this one | The five increments below, and S17.1 by hand | 95 |
-| 3, live refresh | S5.1–S5.3, S5.7, S5.8, S5.10; S6.4, S6.5, S6.6; S7.1–S7.9; S8.3, S8.4; S11.3, S11.4, S11.6, S11.10, S11.11, S11.14, S11.19; S15.3 | 28 |
+| 2, this one | The six increments below, and S17.1 by hand | 104 |
+| 3, live refresh | By `../live-refresh/scope.md` | 30 |
 | 4, sparkline | S10.1–S10.3 | 3 |
 | Waiting on Q62 | S5.9, S5.11 | 2 |
 
