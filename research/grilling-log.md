@@ -191,7 +191,10 @@ Q79–Q83 (how the build lands from slice 2 on) are answered: D82–D86.
 
 Q89–Q93 (how the build skills are split after slice 2) are answered: D87–D91.
 
-Q84–Q88 (slice 2's review) are answered: D92–D96. Pending in PR #2: the user's approval of the view's test boundary and of `github.com/charmbracelet/x/vt`.
+Q84–Q88 (slice 2's review) are answered: D92–D96.
+
+Open, from slice 3's increment 2 (asked in its PR):
+- Q94 — When a block ends: after the probe answers, or after a whole round with no refusal? Pending in PR #2: the user's approval of the view's test boundary and of `github.com/charmbracelet/x/vt`.
 
 Waiting on research, not yet asked:
 - Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). Waits on the holiday check of F14 (2026-11-26) and on the closing-quote measurement in the backlog. F30 already shows that the 30 minutes after the close accepted in D50 (P31) are too short for B3, so Q62 will also have to revisit that number
