@@ -200,6 +200,9 @@ Open, from slice 3's increment 3 (PR #14; built on the recommendations):
 - Q95 — `r` pressed while a refresh is running
 - Q96 — The view gives up on an answer after 5 seconds (design C16's guess)
 
+Open, from slice 3's increment 4 (PR #15; built on the recommendation):
+- Q97 — The wording of the config file's error lines in the view
+
 Waiting on research, not yet asked:
 - Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). Waits on the holiday check of F14 (2026-11-26) and on the closing-quote measurement in the backlog. F30 already shows that the 30 minutes after the close accepted in D50 (P31) are too short for B3, so Q62 will also have to revisit that number
 
@@ -221,7 +224,7 @@ _The product is built in slices: a group of acceptance criteria that reaches the
 |---|---|---|---|---|
 | 1 | One-shot mode (`brl-stocks print`) | Every criterion tagged `print` (129 with S6.11), by `research/build/one-shot/scope.md`; QR1, QR3, QR4, QR5, QR7, QR8, QR10, QR12 | Done: increment 1 (F32–F35) and increment 2 (F36, F37) | S5.9 and S5.11 wait on Q62; hand checks: S17.1 and QR10 (real source), QR12 (a capture of a real run); QR4 and QR5 measured without the view; not verified: the 30-minute cap on the wait, the hourly retry at its full hour; Q62 may change open, close and holidays |
 | 2 | Full-screen view, static | 95 criteria tagged `view` in five increments, by `research/build/full-screen-view/scope.md`; QR1, QR2, QR7, QR10, QR11, QR12 | Built and verified (F38, F39), in PRs #2–#8 and #10 (the review's answers, increment 6), awaiting merge | Approvals: the view's test boundary and `github.com/charmbracelet/x/vt` (#2), `github.com/charmbracelet/x/term` (#10). Questions: none (Q84–Q88 answered, D92–D96). Hand checks: the look on a real terminal, resize and keys in the user's own terminal, S17.1 and QR10 through the view. Not run: the SLOW check of S6.10 at 12 minutes |
-| 3 | Live refresh in the view | 30 criteria tagged `view` in four increments (8, 5, 8, 9), by `research/build/live-refresh/scope.md`; S5.9 and S5.11 wait on Q62; QR4, QR5, QR6, QR8, QR11 with the view open, by verification | Planned (2026-11-25), PR 0 #11; increment 1 built and verified (time passes with a healthy source), PR #12; increment 2 built and verified (failures over time; the view takes in other processes' fetches; QR4, QR5 scaled), PR #13; increment 3 built and verified (`r`), PR #14 | Approval: the view's clock in the test boundary ("Time", `deps.Clock`). S5.9 and S5.11 need Q62. Q95, Q96 open (increment 3) |
+| 3 | Live refresh in the view | 30 criteria tagged `view` in four increments (8, 5, 8, 9), by `research/build/live-refresh/scope.md`; S5.9 and S5.11 wait on Q62; QR4, QR5, QR6, QR8, QR11 with the view open, by verification | Planned (2026-11-25), PR 0 #11; increment 1 built and verified (time passes with a healthy source), PR #12; increment 2 built and verified (failures over time; the view takes in other processes' fetches; QR4, QR5 scaled), PR #13; increment 3 built and verified (`r`), PR #14; increment 4 built and verified (config changes while the view is open), PR #15 | Approval: the view's clock in the test boundary ("Time", `deps.Clock`). S5.9 and S5.11 need Q62. Q95, Q96 open (increment 3), Q97 (increment 4) |
 | 4 | Sparkline | S10 | Not started | |
 | G1 | Groundwork: CI (D83) | — | Done 2026-11-24 (PR #1): passed; failed on a planted fault (wrong green, caught by TestS16_1); passed on the revert | Branch protection on `main` (D84), set by the user |
 
