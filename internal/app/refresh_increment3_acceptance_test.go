@@ -107,7 +107,9 @@ func TestS7_2_View_RAfterANetworkError(t *testing.T) {
 	w := clockWorld(t, bothOpen, plainConfig)
 	loadQuotes(w.src, w.now, true)
 	v, t0, _ := failedOnHeartbeat(t, w, []market.Instrument{petr4}, func(src *fakeSource) { src.fail(petr4, provider.Unavailable) })
-	v.elapse(3*time.Minute + time.Second)
+	// r comes 10 seconds after the third failure: 6.5 skips a row attempted
+	// less than 5 seconds before a forced fetch (D50)
+	v.elapse(3*time.Minute + 10*time.Second)
 	var failed []time.Time
 	for _, at := range v.src.times(petr4) {
 		if at.After(t0) {
