@@ -549,14 +549,19 @@ func TestS5_8_View_JustClosedRowIsRequestedAgain(t *testing.T) {
 		}
 	}
 
-	// When
-	v.elapse(60 * time.Second)
+	// When: a refresh interval passes, and the heartbeat after it. By 6.5 a
+	// quote at most one interval old is not fetched: the row is due only
+	// once it is older than one interval, and the view checks what is due at
+	// its heartbeat, once a second of the clock (design, "Time"). So the row
+	// is requested again within (t0+interval, t0+interval+1s].
+	from, to := start.Add(60*time.Second), start.Add(61*time.Second)
+	v.elapse(61 * time.Second)
 
 	// Then
 	for _, in := range []market.Instrument{petr4, vale3} {
-		if n := v.src.requestedIn(in, start, start.Add(60*time.Second)); n == 0 {
-			t.Errorf("B3 row %s, closed 10 minutes ago with a quote from before the close, was not requested again within one interval; requested at %v",
-				in.Symbol, v.src.times(in))
+		if n := v.src.requestedIn(in, from, to); n == 0 {
+			t.Errorf("B3 row %s, closed 10 minutes ago with a quote from before the close, was not requested again by the heartbeat after one interval, in (%v, %v]; requested at %v",
+				in.Symbol, from.UTC(), to.UTC(), v.src.times(in))
 		}
 	}
 }
