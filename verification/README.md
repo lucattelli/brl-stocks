@@ -511,3 +511,40 @@ the one-shot checks of S15.8 and S15.9 after the change to the engine.
 Not verified from outside, for these: how a long warning looks on the user's
 terminal at its own width (hand check above, without a config file, at 80 and
 at 120 columns).
+
+### Increment 5: narrow terminal and keys (`view_increment5_verify_test.go`)
+
+The 11 criteria of increment 5 in `research/build/full-screen-view/scope.md`
+and QR11, on the real view. Resizes are real: the emulator is resized, then
+the pseudo-terminal (`TIOCSWINSZ`, after which the kernel signals the tool),
+and `SIGWINCH` is also sent. Keys are real bytes: arrows as a terminal sends
+them (`ESC [ A`/`B`, or `ESC O A`/`B` if the tool switches on application
+cursor keys; it did not), `j`, `k`, `s`, `?`. `pressAndSettle` presses a key
+and waits for the screen to change and settle, or 2 s for no change. Run of
+2026-11-25: the ordinary run of all files, about 2 min; 152 top-level checks
+pass, 0 fail, 7 skipped (SLOW and LONG); the 8 new checks, the 11 criteria and
+QR11 pass.
+
+Open questions, not checked as if decided: Q84 (whether left and right arrows
+scroll) and Q85 (whether scrolling counts group header lines). Scrolling is
+checked without groups; left/right and group headers are observations only.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S1.6 | `TestVerifyView_S1_6_NarrowTerminal/{started_at_40,resized}` | Started at 40 columns, and started at 120 then resized to 100, 80, 70, 60, 50, 40 and back to 120: every row keeps ticker, price, percent and `HH:MM`, and no line is wider than the screen. Observed drop order (7.3): low and high at 70, name at 50, change value at 40; no sparkline column yet. Observed at 40: the summary line is cut (`IBOV 158.432 +0,32%    S&P 500 6,812.40`; USD/BRL is gone), which the spec does not decide |
+| S2.4 | `TestVerifyView_S2_4_S9_6_7_Scroll/S2_4` | 25 rows, 120 x 15: the summary line stays the first line through every scroll |
+| S9.2, S9.3, S9.4 | `TestVerifyView_S9_2_4_SortCycle/S9_2` ... `/S9_4` | No groups; file order VALE3 ITUB4 MSFT AAPL PETR4. `s`: PETR4 MSFT VALE3 AAPL ITUB4 (`sort: day change`); `s`: by ticker (`sort: ticker`); `s`: file order |
+| S9.5, S9.10 | `TestVerifyView_S9_5_10_SortInsideGroups` | Groups US then Brasil; after `s`: `US MSFT AAPL Brasil PETR4 VALE3 ITUB4` |
+| S9.6, S9.7 | `TestVerifyView_S2_4_S9_6_7_Scroll/S9_6`, `/S9_7` | No groups (Q85). Down arrow, `j`, `j`: first row 2, 3, 4; up arrow, `k`: 3, 2 |
+| S9.8 | `TestVerifyView_S9_8_Help` | A line for each of `q` quit, `r` refresh, `s` sort, `↑ / k` and `↓ / j` scroll, `?` help. Observed (7.3): `x` closes it and the list is back as before |
+| S9.9 | `TestVerifyView_S9_9_OtherKeysDoNothing` | `x`, `z`, `5`, space, Tab, Enter: the screen identical, each watched for 2 s (an absence of change can only be watched over a time) |
+| Q84 (observation) | `TestVerifyView_S2_4_S9_6_7_Scroll` (evidence) | On a scrolled list, right and left arrows changed nothing |
+| Q85 (observation) | `TestVerifyView_Q85_ScrollWithGroups_Observation` | Two groups: under the column header `Brasil`, then after each `j`: `PETR4`, `AAPL`, `Outros`. Scrolling moves by one screen line, header lines included |
+
+| Requirement | Check | Note |
+|---|---|---|
+| QR11 | `TestVerifyView_QR11_KeysDuringFetch` | The stand-in answers after 5 s; `?`, `x`, `s`, `s` pressed between +0.3 s and +0.9 s, during the fetch at start; from writing the key to the first change of the emulated screen: 16 to 18 ms each (limit 100 ms). Not parallel. Until the emulator, not a real terminal's paint |
+
+Not verified from outside, for these: how a resize looks in the user's own
+terminal window, and its key encodings (hand check above: drag the window
+narrower and wider, and press the arrows, `j`, `k`, `s`, `?`).
