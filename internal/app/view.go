@@ -375,7 +375,7 @@ func configWatcher(path string, d deps.Deps) func(tui.ConfigStamp) tui.ConfigRea
 		}
 		cfg, notes, err := config.Parse(data)
 		if err != nil {
-			cr.Problem = "invalid config " + name + ": " + oneLine(err.Error()) + "; showing the last valid watchlist"
+			cr.Problem = "invalid config " + name + ", last valid watchlist kept: " + oneLine(err.Error())
 			return cr
 		}
 		cr.Cfg, cr.Notes = cfg, notes
