@@ -105,7 +105,7 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 3. Forced: due.
 4. After failures: not due until the last attempt plus interval × 2^(failures−1), at most 30 minutes (D50).
 5. No quote: due, whatever the market (D50).
-6. The market is open: due when the last success is more than one interval old (D14, D23).
+6. The market is open: due when the last success is more than one interval old (D14, D23). A market counts as open from its expected next session too (the same hours on the next weekday, from the last session the source reported), so a closed market's rows are due again when that session starts without a quote having reported it (6.1, S5.7; recorded 2026-11-25 from slice 3's first build; holidays wait on Q62).
 7. After the close, before the next open, on a holiday: **provisional, waits on Q62** (see section 7).
 8. Otherwise not due (D15).
 
