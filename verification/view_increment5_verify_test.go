@@ -466,13 +466,15 @@ func TestVerifyView_S9_9_OtherKeysDoNothing(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // QR11 A key press changes the screen within 100 ms, also while a refresh is
-// running. Measured with a stand-in source that answers after 5 seconds: the
-// fetch at start is running; `?`, then any key, then `s` (the status line's
-// sort changes), each timed from the write of the key to the first change of
-// the emulated screen. Not parallel.
+// running. Measured with a stand-in source that answers after 4 seconds, so
+// that the fetch is answered and not given up (D100): the fetch at start is
+// running; `?`, then any key, then `s` (the status line's sort changes), each
+// timed from the write of the key to the first change of the emulated screen.
+// Then the held fetch must be answered: PETR4 shows the stand-in's 12.34, no
+// `source unreachable`. Not parallel.
 func TestVerifyView_QR11_KeysDuringFetch(t *testing.T) {
 	e := newEnv(t, "QR11 (view)", baseConfig)
-	e.setSource(state{DelayMS: 5000}, "answers after 5 s")
+	e.setSource(state{DelayMS: 4000, Quotes: map[string]override{"PETR4.SA": {Price: fp(12.34)}}}, "answers after 4 s; PETR4 12.34")
 	v := e.openView(nil)
 	v.waitStable("every row", 5*time.Second, 300*time.Millisecond, func(s screen) bool {
 		for _, tk := range tickers {
@@ -500,7 +502,24 @@ func TestVerifyView_QR11_KeysDuringFetch(t *testing.T) {
 		ls = append(ls, lat{k.name, s.at.Sub(at), ok, at.Sub(v.start)})
 		v.waitStable("settled", 2*time.Second, 150*time.Millisecond, func(screen) bool { return true })
 	}
+	sAns, okAns := v.waitFor("the held fetch answered (PETR4 R$ 12,34)", time.Until(v.start.Add(8*time.Second)), func(s screen) bool {
+		return rowsShown(tickers)(s) && strings.Contains(strings.Join(s.rowLines("PETR4"), ""), "R$ 12,34")
+	})
+	v.logScreen("SCREEN AFTER THE HELD FETCH", sAns, nil)
 	r := v.quit([]byte("q"), "q")
+	crit(e, "QR11 answered", "the fetch held 4 s is answered: the rows show the new quotes, no `source unreachable`", func(c *ck) {
+		if !okAns {
+			c.failf("PETR4 does not show the held answer's R$ 12,34: %q", sAns.rowLines("PETR4"))
+		}
+		if el := errorLines(sAns); len(el) != 0 {
+			c.failf("error line after the held fetch: %q", el)
+		}
+		for _, q := range r.reqs {
+			if q.UnixMS < v.start.Add(2*time.Second).UnixMilli() && q.Status != 200 {
+				c.failf("held request #%d %s: status %d, want answered (200)", q.Seq, q.Symbol, q.Status)
+			}
+		}
+	})
 	crit(e, "QR11", "each key changes the screen within 100 ms while the fetch at start runs", func(c *ck) {
 		answered := 0
 		for _, q := range r.reqs {
@@ -516,7 +535,7 @@ func TestVerifyView_QR11_KeysDuringFetch(t *testing.T) {
 			if !l.ok || l.d > 100*time.Millisecond {
 				c.failf("%s: the screen changed after %s (changed: %v), want within 100 ms", l.key, l.d.Round(time.Millisecond), l.ok)
 			}
-			if l.atRun > 5*time.Second {
+			if l.atRun > 4*time.Second {
 				c.failf("set-up: %s was pressed at +%s, after the fetch at start could have ended", l.key, l.atRun.Round(time.Millisecond))
 			}
 		}

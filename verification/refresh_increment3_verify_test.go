@@ -319,25 +319,25 @@ func TestVerifyView_S7_9_TwentyB3RowsBeforeInterval(t *testing.T) {
 }
 
 // Outside the criteria: `r` pressed while a heartbeat refresh is still running
-// (answers held 5 s, as QR11 measures; and 4 s). Interval 10 s; once a
+// (answers held 4 s, as QR11 measures since D100). Interval 10 s; once a
 // heartbeat request has arrived and is unanswered, r (with_r) or nothing
 // (control). 1 s after the held answers the source answers at once again.
-// Recorded: requests per ticker until 25 s after the heartbeat started, the
-// status of each held request, and the screen 2 s after the held answers (the
-// spec sets no time limit on a request of the view, so that screen is not
-// asserted). Asserted: 25 s after the heartbeat started no row is stale.
+// Recorded: requests per ticker until 25 s after the heartbeat started.
+// Asserted: every held request answered (200), and 2 s after the held answers
+// no row is stale and there is no error line; 25 s after the heartbeat
+// started no row is stale.
 func TestVerifyView_R_DuringRunningHeartbeat(t *testing.T) {
 	t.Parallel()
 	for _, p := range []struct {
 		name  string
 		withR bool
 		hold  int
-	}{{"with_r_5s", true, 5000}, {"control_no_r_5s", false, 5000}, {"with_r_4s", true, 4000}} {
+	}{{"with_r_4s", true, 4000}, {"control_no_r_4s", false, 4000}} {
 		p := p
 		withR, name := p.withR, p.name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			e := newEnv(t, "a heartbeat refresh running (answers held 5 s); "+name, baseConfig)
+			e := newEnv(t, fmt.Sprintf("a heartbeat refresh running (answers held %d ms); %s", p.hold, name), baseConfig)
 			v := e.openRows(tickers, nil)
 			sw := time.Now()
 			e.setSource(state{DelayMS: p.hold}, fmt.Sprintf("answers after %d ms", p.hold))
@@ -383,6 +383,9 @@ func TestVerifyView_R_DuringRunningHeartbeat(t *testing.T) {
 				for _, q := range r.reqs {
 					if q.UnixMS >= hbAt.UnixMilli()-1000 && q.UnixMS < hbAt.UnixMilli()+1000 {
 						c.notef("held request #%d %s -> status %d (answered +%s)", q.Seq, q.Symbol, q.Status, time.Duration(q.AnsweredMS-hb.UnixMS)*time.Millisecond)
+						if q.Status != 200 {
+							c.failf("held request #%d %s: status %d, want answered (200)", q.Seq, q.Symbol, q.Status)
+						}
 					}
 				}
 				for _, sym := range append(symsOf(tickers), "^BVSP", "^GSPC", "BRL=X") {
@@ -390,9 +393,12 @@ func TestVerifyView_R_DuringRunningHeartbeat(t *testing.T) {
 					c.notef("%s: %d: %s", sym, len(ts), fmtArrivals(ts, hbAt))
 				}
 				c.notef("error line 2 s after the held answers %q, at +25 s %q", errorLines(s7), errorLines(s25))
+				if el := errorLines(s7); len(el) != 0 {
+					c.failf("error line 2 s after the held answers: %q", el)
+				}
 				for _, tk := range tickers {
 					if m, _, _, ok := staleMark(strings.Join(s7.rowLines(tk), "")); ok {
-						c.notef("%s stale 2 s after its held answer was written: %s", tk, m)
+						c.failf("%s stale 2 s after its held answer was written: %s", tk, m)
 					}
 					if m, _, _, ok := staleMark(strings.Join(s25.rowLines(tk), "")); ok {
 						c.failf("%s stale 25 s after the heartbeat started: %s", tk, m)
