@@ -1,0 +1,15 @@
+# Briefs: live refresh (slice 3), increment 2
+
+Written on 2026-11-25. The agents of increment 1 are resumed with these messages; their briefs (`../increment-1/briefs.md` and the slice 2 briefs they point to) still hold. In a new session, start fresh agents from `../increment-1/briefs.md` plus these messages.
+
+## Test writer
+
+Worktree /home/lucattelli/Programming/prototyping/brl-stocks-wt-tests (branch slice3/2-tests). Increment 2 of research/build/live-refresh/scope.md: S6.4, S6.5, S6.6, S7.5, S7.10 (5), the view left open while a source fails, refuses and recovers; and, named `TestS<id>_ViewOpen_...`, the criteria the scope lists as shown again in increment 2 (S6.1, S6.2, S6.3, S6.8, S6.9, S6.10, S6.11, S8.2), each on a heartbeat refresh that fails while the view is open, not at start. A NEW file internal/app/refresh_increment2_acceptance_test.go; reuse your helpers; change no other test file. Same rules as your increment-1 brief: time only through Elapse on the shared clock, the source stamps requests with the clock and answers or fails at once, every passing test needs a reason and one shown failure. Commit in one commit ("Slice 3, increment 2: acceptance tests for failures over time (N)"). Return at most 250 words.
+
+## Builder
+
+Worktree /home/lucattelli/Programming/prototyping/brl-stocks-wt-build (branch slice3/2-build). Make internal/app/refresh_increment2_acceptance_test.go pass: waits after failures and refusals while the view is open (6.2, 6.3), the block ending, recovery. Also build what increment 1 left out and QR4 needs: the view takes in what other processes fetched, by reading the cache again (design C4, "the view merges what it reads from disk and never replaces a quote with nothing"); say how you showed it, since no criterion of this increment tests it. Same rules as before: never edit a test; stop on any disagreement; gofmt, vet, `go test ./... -race -count=1` twice, and the ordinary verification (`-tags verification`) still passes; watch the suite's time and say it. Commit in one commit ("Slice 3, increment 2: build failures over time and the cache from other processes"). Return at most 250 words.
+
+## Verifier
+
+Worktree /home/lucattelli/Programming/prototyping/brl-stocks-wt-verify (branch slice3/2-verify). Increment 2's criteria through the real view in real time, scaled to the 10-second interval where they allow it (S6.4's waits are interval × 2^(n−1); S7.5's are 5, 10, 20, 30 minutes and are SLOW unless the stand-in can make them visible sooner; say where you scaled). Also QR4 and QR5 with the view open: the view and `brl-stocks print` called every 2 seconds, all instances counted by the stand-in; run them scaled in the ordinary run if they fit, the full 10 minutes behind the SLOW switch. A NEW file verification/refresh_increment2_verify_test.go. Report what you observed outside the criteria. gofmt your files; run all ordinary checks once at the end; keep the run under about 6 minutes. Commit in one commit ("Slice 3, increment 2: verify failures over time, QR4, QR5"). Return at most 300 words.
