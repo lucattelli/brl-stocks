@@ -654,3 +654,51 @@ and watch the count stop growing after the period after the close; then
 `curl -X POST -d '{"opens_at_unix":{"b3":'$(( $(date +%s) + 60 ))'}}' http://127.0.0.1:18765/_control`
 and watch the status line turn to `B3 open` and the count grow again within
 about 70 s, with no key pressed.
+
+## Live refresh, slice 3 increment 2 (`refresh_increment2_verify_test.go`)
+
+The 5 criteria of increment 2 in `research/build/live-refresh/scope.md`
+(S6.4, S6.5, S6.6, S7.5, S7.10), the criteria shown again on a heartbeat
+refresh that fails (S6.1, S6.2, S6.3, S6.8, S6.9, S6.10, S6.11, S8.2), and
+QR4 and QR5 with the view open and `brl-stocks print` called every 2 s, every
+instance counted at the one stand-in. Real time, as in increment 1. An
+"attempt" of a block is a burst of requests (a gap of more than 3 s starts a
+new one). The waits after failures follow the interval and are scaled to
+10 s; the waits of a block (5, 10, 20, 30 min) do not, so the ordinary run
+sees the first wait end (S7.10, QR5) and the second wait announced on screen,
+and the series is behind SLOW and LONG. Run of 2026-11-25 (evidence `20261125T155447Z`): the ordinary run of all files, 5 min 51 s; 171 top-level checks pass, 0 fail, 18 skipped (SLOW and LONG); the 5 new ordinary checks, the 5 criteria, the 8 shown again, QR4 and QR5 (scaled) pass.
+
+```sh
+# only these checks (about 5 min 30 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S6_|S7_10|QR4_Scaled|QR5_)' -v
+# S6.4 to 320 s, S7.5 5 and 10 min, QR4 10 min, QR5 16.5 min (in parallel, about 17 min)
+BRL_VERIFY_SLOW=1 mise exec -- go test -tags verification ./verification/ -run 'TestVerifySlow_View_(S6_4|S7_5|QR4|QR5)' -v -timeout 30m
+# S6.4 at 60 s with the 30-minute cap, S7.5's full series (about 1 h 36 min), with the other LONG checks
+BRL_VERIFY_LONG=1 mise exec -- go test -tags verification ./verification/ -run TestVerifyLong -v -timeout 9h
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S6.4 | `TestVerifyView_S6_4_S6_1_2_8_9_10_S8_2_RowKeepsFailing/S6_4`; `TestVerifySlow_View_S6_4_TenSecondIntervalToFiveMinutes` (SLOW); `TestVerifyLong_View_S6_4_DefaultIntervalWithCap` (LONG) | Scaled: interval 10 s, so gaps 10, 20, 40, 80 s (−0.5 s / +1.5 s allowed). `print` leaves the cache, then VALE3 answers 503 for good; the other rows answer. The cap of 1,800 s only in LONG, not run. 2026-11-25: gaps 10.01, 20.01, 40.03, 80.05 s; PETR4 every 10 s meanwhile |
+| S6.5, S6.6 | `TestVerifyView_S6_3_5_6_11_FailThenRecover/S6_5`, `/S6_6` | Five rows stale after a failed heartbeat refresh (503); the source answers again; marks and error line gone. 2026-11-25: gone 10.0 s after the source answered again (the next attempt, one interval after the first failure) |
+| S7.5 | `TestVerifyView_S7_10_S7_5_BlockEndsWithoutKey/S7_5`, `TestVerifyView_QR5_S7_5_Scaled_BlockWithViewAndPrint/S7_5`; `TestVerifySlow_View_S7_5_FiveAndTenMinutes` (SLOW); `TestVerifyLong_View_S7_5_FullSeries` (LONG) | Ordinary: the first wait (5 min) observed as requests, the second (10 min) as the next attempt time on screen after the second refusal. 20 and 30 min only in LONG, not run. 2026-11-25: first attempt 5 min 0.2 s after the first refused answer; error line `source is rate-limiting: 5 rows not updated · next attempt 16:00`; with QR5, after the second refusal the next attempt reads 10 min later (16:10) |
+| S7.10 | `TestVerifyView_S7_10_S7_5_BlockEndsWithoutKey/S7_10` | Not scaled (5 min). The view opens healthy; 429 for everything until the first refusal; the source answers 3 s later; no key. 2026-11-25: every row requested at +5 min 0.19 s, then every 10 s; no error line or stale mark afterwards |
+| S6.1, S6.2, S6.3, S6.9 (shown again) | `TestVerifyView_S6_3_5_6_11_FailThenRecover/S6_1` ... `/S6_9`; S6.1, S6.2, S6.9 also `..._RowKeepsFailing/*` | On a failed heartbeat refresh: prices kept, `!10s` marks, one line `source unreachable: 5 rows not updated · next attempt HH:MM` |
+| S6.8, S6.10, S8.2 (shown again) | `TestVerifyView_S6_4_S6_1_2_8_9_10_S8_2_RowKeepsFailing/S6_8`, `/S6_10`, `/S8_2` | Only VALE3 stale; at the end of the run its mark reads the real age in minutes (scaled from 12 min); XXXX9 not found and the other rows keep refreshing |
+| S6.11 (shown again) | `TestVerifyView_S6_3_5_6_11_FailThenRecover/S6_11` | ^GSPC alone 503 on a heartbeat refresh: `source unreachable: summary not updated · next attempt HH:MM` |
+
+| Requirement | Check | Note |
+|---|---|---|
+| QR4 | `TestVerifyView_QR4_Scaled_ViewAndPrintEveryTwoSeconds`; `TestVerifySlow_View_QR4_TenMinutes` (SLOW) | Scaled: 2 min at 10 s (12 intervals; at most 18 per entry, 414 in total), 20 tickers and 3 summary entries, the view open and `print` every 2 s. 2026-11-25: 60 `print` calls, 276 requests, 12 per entry (one per interval of the view: no `print` call fetched). Full (10 min at 60 s, 345) not run |
+| QR5 | `TestVerifyView_QR5_S7_5_Scaled_BlockWithViewAndPrint/QR5`; `TestVerifySlow_View_QR5_SixteenMinutes` (SLOW) | Scaled: 5 min 20 s from the first refused answer in place of 10 min; the view open and `print --refresh` every 2 s, 23 entries; requests counted from the arrivals after the first refusal was written. 2026-11-25: 160 calls; 6 arrivals after the first refusal was written (5 of the first refresh at +0 s, 1 at +5 min). Full not run |
+
+Recorded outside the criteria: after the 5-minute wait of a refusing source (QR5) the tool sent one request, then stopped on its refusal (D98's first request); when the source answered (S7.10) all 8 entries were requested within 10 ms. With the view and `print` together, `print` never fetched while the view was open: the view did all the work and `print` read the cache. A view started on a refusing source with no cache reads `B3 unknown · US unknown`. Stale marks round down (`!2m` at 2 min 47 s).
+
+Not verified from outside, for these: the waits of 20 and 30 minutes and the
+cap of 1,800 s (LONG, not run), the 10-minute QR4 and QR5 (SLOW, not run), and
+the look of the error line during a block on a real terminal. Hand check: with
+the stand-in and the view of the hand check above, run
+`curl -X POST -d '{"status":429}' http://127.0.0.1:18765/_control`, watch the
+error line `source is rate-limiting: ... · next attempt HH:MM` appear at the
+next refresh, then `curl -X POST -d '{}' http://127.0.0.1:18765/_control` and
+watch the line go at that HH:MM (5 minutes later) with no key pressed.
