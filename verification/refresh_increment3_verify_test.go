@@ -17,7 +17,8 @@ import (
 	"time"
 )
 
-// pressR presses r and returns when the key was written.
+// pressR presses r and returns the time taken just before the key is
+// written (compared with arrivals at millisecond resolution, see arrivals).
 func (v *view) pressR(what string) time.Time {
 	at := time.Now()
 	v.key([]byte("r"), what)
