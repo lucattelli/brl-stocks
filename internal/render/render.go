@@ -24,6 +24,8 @@ type View struct {
 	Colour bool           // colour the day change: a terminal, and NO_COLOR not set (D25)
 	Sort   Sort           // the order of the rows inside each group; the table keeps file order
 	Width  int            // the screen's width, to drop columns from; 0: no limit (the table)
+	// Sparkline adds the TODAY column: the view has it, print does not (7.3, 7.4).
+	Sparkline bool
 
 	memo *memo // what one drawing computes once, not per row; set by prepared
 }
@@ -301,8 +303,11 @@ func NextAttempt(v View) string {
 // v.Colour is set. Both surfaces draw their rows with it.
 func Lines(v View) []string {
 	v = v.prepared()
-	header := []string{"TICKER", "NAME", "LAST", "CHANGE", "", "LOW", "HIGH", "TIME"}
-	rightAligned := []bool{false, false, true, true, true, true, true, false}
+	header := []string{"TICKER", "NAME", "LAST", "CHANGE", "", "LOW", "HIGH", "TIME", "TODAY"}
+	rightAligned := []bool{false, false, true, true, true, true, true, false, false}
+	if !v.Sparkline {
+		header, rightAligned = header[:8], rightAligned[:8]
+	}
 	type line struct {
 		cells []string // nil: a group name, in text
 		text  string
@@ -325,10 +330,13 @@ func Lines(v View) []string {
 			}
 		}
 	}
-	// A narrow screen drops columns in this order: day low and high, name,
-	// day change value; ticker, last price, percent and time always remain
-	// (D50). The sparkline, first to go, is not drawn yet.
-	shown := []bool{true, true, true, true, true, true, true, true}
+	// A narrow screen drops columns in this order: sparkline, day low and
+	// high, name, day change value; ticker, last price, percent and time
+	// always remain (D50).
+	shown := make([]bool, len(header))
+	for i := range shown {
+		shown[i] = true
+	}
 	total := func() int {
 		n, cols := 0, 0
 		for i, w := range width {
@@ -339,7 +347,11 @@ func Lines(v View) []string {
 		}
 		return n + 2*(cols-1)
 	}
-	for _, drop := range [][]int{{5, 6}, {1}, {3}} {
+	drops := [][]int{{5, 6}, {1}, {3}}
+	if v.Sparkline {
+		drops = append([][]int{{8}}, drops...)
+	}
+	for _, drop := range drops {
 		if v.Width <= 0 || total() <= v.Width {
 			break
 		}
@@ -372,7 +384,7 @@ func Lines(v View) []string {
 			first = false
 			// The change value and percent (columns 3 and 4) are coloured after
 			// padding, so that colour codes do not change the alignment.
-			if val, ok := v.dayChange(l.in); ok && l.in.Symbol != "" && (i == 3 || i == 4) {
+			if val, ok := v.dayChange(l.in); ok && l.in.Symbol != "" && (i == 3 || i == 4 || i == 8) {
 				c = v.paint(c, val, 2)
 			}
 			if rightAligned[i] {
@@ -405,9 +417,9 @@ func (v View) row(in market.Instrument) []string {
 	st, old := v.state(in)
 	switch st {
 	case market.NotFound:
-		return []string{in.Symbol, dash, "not found", dash, dash, dash, dash, dash}
+		return v.cells(in.Symbol, dash, "not found", dash, dash, dash, dash, dash, "")
 	case market.NoData:
-		return []string{in.Symbol, dash, dash, dash, dash, dash, dash, dash}
+		return v.cells(in.Symbol, dash, dash, dash, dash, dash, dash, dash, "")
 	}
 	q := e.Quote
 	br := brazilian(in)
@@ -424,11 +436,57 @@ func (v View) row(in market.Instrument) []string {
 	if st == market.Stale {
 		when += " " + age(old)
 	}
-	return []string{
-		in.Symbol, name, symbol + number(q.Price, 2, br),
-		signed(val, 2, br), signed(pct, 2, br) + "%",
-		number(q.Low, 2, br), number(q.High, 2, br), when,
+	return v.cells(
+		in.Symbol, name, symbol+number(q.Price, 2, br),
+		signed(val, 2, br), signed(pct, 2, br)+"%",
+		number(q.Low, 2, br), number(q.High, 2, br), when, Sparkline(q),
+	)
+}
+
+// cells is a row's cells, with the sparkline only when v has the column.
+func (v View) cells(c ...string) []string {
+	if !v.Sparkline {
+		return c[:8]
 	}
+	return c
+}
+
+// sparkWidth is the sparkline's width in characters (D13, D50).
+const sparkWidth = 10
+
+var blocks = []rune("▁▂▃▄▅▆▇█")
+
+// Sparkline draws a quote's prices of its regular session (7.3, D104,
+// D105): sampled evenly into 10 characters, keeping the first and the
+// latest, fewer prices one character each; each price at the nearest of
+// eight evenly spaced levels between the lowest and the highest drawn, a
+// flat line all `▄`. "" when the series has no prices in the session.
+func Sparkline(q *market.Quote) string {
+	var pts []market.Point
+	s := q.Session
+	for _, p := range q.Series {
+		if !s.Start.IsZero() && (p.T.Before(s.Start) || (!s.End.IsZero() && p.T.After(s.End))) {
+			continue // outside the regular session (S10.9)
+		}
+		pts = append(pts, p)
+	}
+	pts = market.Downsample(pts, sparkWidth)
+	if len(pts) == 0 {
+		return ""
+	}
+	lo, hi := pts[0].V, pts[0].V
+	for _, p := range pts {
+		lo, hi = math.Min(lo, p.V), math.Max(hi, p.V)
+	}
+	out := make([]rune, len(pts))
+	for i, p := range pts {
+		level := 3 // a flat line
+		if hi > lo {
+			level = int(math.Round((p.V - lo) / (hi - lo) * float64(len(blocks)-1)))
+		}
+		out[i] = blocks[level]
+	}
+	return string(out)
 }
 
 // Cause gives the one line that says why rows were not updated, or "" when
