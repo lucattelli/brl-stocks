@@ -74,6 +74,23 @@ type state struct {
 	// whose session is over that many seconds before its close, in place of at
 	// the close. Added for S5.8: a quote time before the close.
 	QuoteBeforeCloseSeconds int64 `json:"quote_before_close_seconds"`
+	// Series replaces the made-up intraday series of single symbols. Added for
+	// the sparkline (S10): exact prices, gaps, and prices outside the session.
+	Series map[string]seriesSpec `json:"series"`
+}
+
+// seriesSpec is an intraday series as the source's answer carries it.
+type seriesSpec struct {
+	// Closes are the prices of the regular session, 5 minutes apart from its
+	// start (closer when they would pass the quote time); null is a gap (no
+	// price at that time). An empty list is a series with no prices.
+	Closes []*float64 `json:"closes"`
+	// Before are prices timed before the session's start, 5 minutes apart,
+	// the last one 5 minutes before the start.
+	Before []float64 `json:"before"`
+	// After are prices timed after the session's end, 5 minutes apart, the
+	// first one 5 minutes after the end.
+	After []float64 `json:"after"`
 }
 
 // record is one request as the source saw it.
@@ -310,6 +327,35 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 	if n > 0 {
 		closes[n-1] = q.Price
 	}
+	var tsOut any = ts
+	var closesOut, lowsOut, highsOut any = closes, lows, highs
+	if sp, ok := st.Series[symbol]; ok {
+		var t2 []int64
+		var c2 []*float64
+		for i, v := range sp.Before {
+			v := v
+			t2 = append(t2, start-int64(len(sp.Before)-i)*300)
+			c2 = append(c2, &v)
+		}
+		step := int64(300)
+		if k := int64(len(sp.Closes)); k > 1 && start+(k-1)*step > quoteTime && quoteTime > start {
+			step = (quoteTime - start) / (k - 1)
+		}
+		for i, v := range sp.Closes {
+			t2 = append(t2, start+int64(i)*step)
+			c2 = append(c2, v)
+		}
+		for i, v := range sp.After {
+			v := v
+			t2 = append(t2, end+int64(i+1)*300)
+			c2 = append(c2, &v)
+		}
+		if t2 == nil {
+			t2 = []int64{}
+			c2 = []*float64{}
+		}
+		tsOut, closesOut, lowsOut, highsOut = t2, c2, c2, c2
+	}
 
 	body := map[string]any{"chart": map[string]any{
 		"result": []any{map[string]any{
@@ -327,9 +373,9 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 					"regular": map[string]any{"start": start, "end": end},
 				},
 			},
-			"timestamp": ts,
+			"timestamp": tsOut,
 			"indicators": map[string]any{"quote": []any{map[string]any{
-				"close": closes, "low": lows, "high": highs,
+				"close": closesOut, "low": lowsOut, "high": highsOut,
 			}}},
 		}},
 		"error": nil,
