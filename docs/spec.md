@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and S10.4–S10.10 (the sparkline as 7.3 already states it, with no criterion, found by slice 4's scope), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D98, facts F1–F40).
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and S10.4–S10.10 (the sparkline as 7.3 already states it, with no criterion, found by slice 4's scope), and for D104–D107 (7.3, S10.11–S10.22), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D107, facts F1–F40).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -336,7 +336,7 @@ B3 open · US closed · sort: file order · ? help
 - **Numbers.** Each row uses the format of its currency: R$ rows a comma for decimals and a dot for thousands (`R$ 1.038,42`), US$ rows a dot for decimals and a comma for thousands (`US$ 1,229.87`). This covers the amounts in the row's currency: the price, the change value and the day low and high (D46). The day change percent is not an amount in a currency; it follows the same format (D64). Prices, including the day low and high, have two decimals (D46); so have the change value and the percent (D65). Only the last price carries the currency symbol, followed by one space; values are rounded half away from zero; a minus sign is the plain hyphen; a change of zero reads `+0,00` or `+0.00` (D66). In the summary line, each entry uses the format of its market, and USD/BRL the R$ format (D51).
 - **Day change.** Always with a sign. Green when up, red when down, from the terminal's own palette; no colour when zero (D25, D50). No colour at all when `NO_COLOR` is set (D25).
 - **Quote time.** In the machine's local time, as `HH:MM`; as `DD/MM` when the quote is not from today (D50).
-- **Sparkline.** The regular session of the current or last trading day, 10 characters wide, earliest on the left, in the colour of the day change (D13, D50).
+- **Sparkline.** The regular session of the current or last trading day, 10 characters wide, earliest on the left, in the colour of the day change (D13, D50). The prices so far are sampled evenly into the 10 characters, always keeping the first and the latest; fewer than 10 prices take one character each, from the left (D104). Each price is drawn with one of the eight blocks `▁▂▃▄▅▆▇█`, on a linear scale from the lowest of the prices it draws (`▁`) to the highest (`█`), with the eight levels evenly spaced, each price at the nearest level; a flat line is all `▄` (D105). For a not-found row, a row with no data yet and a quote whose series has no prices, the sparkline column is blank, not `—`; a stale row and a cached row keep the sparkline of their last successful fetch (D106). The column's header is `TODAY`, dropped with the column; the sparkline starts at the same position in every row, two spaces after the widest quote time with its stale mark (D107).
 - **Stale row.** `!` and the age since the last successful fetch after the quote time: `!45s`, `!12m`, `!3h`, `!2d` (D19, D40, D50).
 - **Not found.** "not found" in place of the price; `—` in the other data columns (D39, D50).
 - **No data yet.** `—` in every data column (D50).
@@ -597,6 +597,18 @@ As the user, I want a small chart of the day in each row, so that I see how the 
 - **S10.8** [view] Given a terminal one cell narrower than the widest row with its sparkline, when the view is drawn, then no row has a sparkline. (D50)
 - **S10.9** [view] Given the source's answer holds prices from before the regular session opened or after it closed, when the row is drawn, then its sparkline does not include them. (D50)
 - **S10.10** [view] Given a row whose prices rose steadily all day, when the view is drawn at full width, then the lowest character of its sparkline is on the left and the highest on the right. (D50)
+- **S10.11** [view] Given a row whose series has 4 prices, when the view is drawn at full width, then its sparkline is 4 characters wide. (D104)
+- **S10.12** [view] Given a row whose series has 25 prices, the first of them the day's lowest and the latest the day's highest, when the view is drawn at full width, then its sparkline starts with `▁` and ends with `█`. (D104, D105)
+- **S10.13** [view] Given a row whose series is the 10 prices 10, 11, 12, …, 19, when the view is drawn at full width, then its sparkline reads `▁▂▃▃▄▅▆▆▇█`. (D104, D105)
+- **S10.14** [view] Given a row whose series holds the same price 10 times, when the view is drawn at full width, then its sparkline reads `▄▄▄▄▄▄▄▄▄▄`. (D104, D105)
+- **S10.15** [view] Given a not-found row, when the view is drawn at full width, then its sparkline column is blank. (D106)
+- **S10.16** [view] Given a row with no data yet, when the view is drawn at full width, then its sparkline column is blank. (D106)
+- **S10.17** [view] Given a quote whose series has no prices, when the view is drawn at full width, then its row's sparkline column is blank. (D106)
+- **S10.18** [view] Given a row with a sparkline whose next refresh fails, when the view is drawn at full width, then the stale row shows the same sparkline. (D106)
+- **S10.19** [view] Given a cache left by an earlier run whose row had a sparkline, and a source that has not answered yet, when the view opens at full width, then the cached row shows that sparkline. (D106)
+- **S10.20** [view] Given the view at full width, when the column header is drawn, then the sparkline's column is headed `TODAY`. (D107)
+- **S10.21** [view] Given a terminal one cell narrower than the widest row with its sparkline, when the view is drawn, then the column header has no `TODAY`. (D50, D107)
+- **S10.22** [view] Given rows whose quote times and stale marks differ in width, when the view is drawn at full width, then every sparkline starts two spaces after the end of the widest quote time with its stale mark. (D107)
 
 ### S11 — The watchlist is a file I edit
 
@@ -844,7 +856,6 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 
 | Item | Affects | Blocks the design or the build? |
 |---|---|---|
-| Q99–Q102: the sparkline's shape (how the day fills 10 characters, glyphs and scale, rows without a fresh series, the column's header and place) | 7.3, S10 | Build: the criteria they add wait on the answers |
 | Whether the trading period in the source's answer is right on a market holiday (F14, backlog; next check on US Thanksgiving, 2026-11-26) | 6.1, S5.9 | Design: no, but it needs a fallback. Build: S5.9 cannot pass until it is known |
 | Q62: how open, closed and holidays are decided, and what a closed or holiday market may cost in requests (log: waits on research) | 6.1, S5.3–S5.9; 6.1 says a holiday costs none | Build: yes, for the market-hours part only |
 | Which answers the default source gives when it rate-limits or refuses (F3 names one; an unknown ticker is told apart, F27; backlog) | D50, 6.3 | Build: yes, for the source part |
@@ -960,3 +971,7 @@ Every decision in the log, and where the spec realises it.
 | D101 | 7.3 |
 | D102 | 7.2 |
 | D103 | process |
+| D104 | 7.3, S10.11, S10.12 |
+| D105 | 7.3, S10.12–S10.14 |
+| D106 | 7.3, S10.15–S10.19 |
+| D107 | 7.3, S10.11, S10.20–S10.22 |

@@ -9,7 +9,7 @@ Written 2026-11-25 from the spec's surface tags (183 criteria, 146 tagged `view`
 
 ## The criteria
 
-10 criteria, all tagged `view`: S10.1–S10.10. S10.4–S10.10 were added to the spec by this scope, from what 7.3 already states with no criterion (D25, D50): the width and direction, the colour of the day change, the first column dropped on a narrow terminal, the regular session only.
+22 criteria, all tagged `view`: S10.1–S10.22. S10.11–S10.22 come from the answers to Q99–Q102 (D104–D107). S10.4–S10.10 were added to the spec by this scope, from what 7.3 already states with no criterion (D25, D50): the width and direction, the colour of the day change, the first column dropped on a narrow terminal, the regular session only.
 
 Read across the spec for what a sparkline shows, and left where they are:
 - **S1.6** (narrow terminal: four columns always remain) is slice 2's, and still holds with the sparkline; S10.8 is the sparkline's part of the order of 7.3.
@@ -24,7 +24,6 @@ Read across the spec for what a sparkline shows, and left where they are:
 ## Waiting
 
 - **S5.9, S5.11:** wait on Q62, as before. Not in this slice.
-- What Q99–Q102 decide becomes criteria of S10 once answered (through `log-to-spec`), and joins increment 1.
 
 ## Increments
 
@@ -32,7 +31,7 @@ One increment: every criterion has the same setup (the view opened on a stand-in
 
 | # | Increment | Criteria | Needs |
 |---|---|---|---|
-| 1 | **The sparkline.** Drawn at full width, for an open and a closed market; 10 characters, earliest on the left; its colour; dropped first on a narrow terminal; no extra screens on any key | S10.1–S10.8, S10.10 (9), and the criteria from Q99–Q102 when answered | Slices 2 and 3's view, no boundary change |
+| 1 | **The sparkline.** Drawn at full width, for an open and a closed market; 10 characters, earliest on the left; its colour; dropped first on a narrow terminal; no extra screens on any key | S10.1–S10.8, S10.10–S10.22 (21) | Slices 2 and 3's view, no boundary change |
 
 Shown again by increment 1 with a series, counted in slice 2: S1.6 (the four columns that always remain), S16.3 (no colour codes with `NO_COLOR`).
 
@@ -40,7 +39,7 @@ Notes for the briefs:
 - The stand-in source returns the series with each quote (`market.Quote.Series`, oldest first). The provider behind the boundary keeps only the regular session; the stand-in is in its place, so S10.9 is checked by verification (below).
 - A closed market (S10.2) comes from the trading period the stand-in returns and the view's clock, as in slices 2 and 3.
 - S10.3 passes before the build (no key opens anything): it needs a shown failure of its own. It is a whole-screen check, close to S9.9; it stays here as S10's own criterion.
-- S10.1, S10.2, S10.4 and S10.10 need the glyphs and the scale (Q100) to say what to expect; until answered, they assert only what does not depend on them (a sparkline is there, its width, lowest left and highest right with block characters in their Unicode order).
+- The glyphs and the scale are D105 (S10.13, S10.14 give exact lines). S10.18 and S10.19 need a failed refresh and a cache from an earlier run, as slice 2's S6.10 and slice 3's increment 2 set them up.
 - S10.2: the stand-in gives a closed market's last trading day as its series, with a clock after the close; it is S10.1 with a closed clock.
 - The width of the full row is read from a frame at a wide terminal, then narrowed one cell (S10.8).
 
@@ -48,7 +47,7 @@ Notes for the briefs:
 
 | What | Route |
 |---|---|
-| S10.9 (regular session only) | Verification of the real build, through `BRL_STOCKS_SOURCE_URL` (D70): the source's own answer with a price far below the session before the open and one far above after the close; with the scale of Q100, either would change the line |
+| S10.9 (regular session only) | Verification of the real build, through `BRL_STOCKS_SOURCE_URL` (D70): the source's own answer with a price far below the session before the open and one far above after the close; with the scale of D105, either would change the line |
 | The look of the glyphs in the user's terminal and font | Hand check |
 
 ## Test boundary
