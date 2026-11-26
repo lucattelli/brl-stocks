@@ -1,6 +1,6 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and S10.4–S10.10 (the sparkline as 7.3 already states it, with no criterion, found by slice 4's scope), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
 Source: `research/grilling-log.md` (decisions D1–D98, facts F1–F40).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
@@ -588,8 +588,15 @@ As the user, I want to reorder and scroll the list with a few keys, so that I fi
 As the user, I want a small chart of the day in each row, so that I see how the price got where it is. (D13)
 
 - **S10.1** [view] Given a row with a quote from an open market, when the view is drawn at full width, then the row ends with a sparkline of the day's prices so far. (D13)
-- **S10.2** [view] Given a row of a closed market, when the view is drawn, then the sparkline shows the last trading day. (D50)
+- **S10.2** [view] Given a row of a closed market, when the view is drawn at full width, then the sparkline shows the last trading day. (D50)
 - **S10.3** [view] Given the view, when any key from section 7.3 is pressed, then no alert, detail view or news appears. (D13, D32)
+- **S10.4** [view] Given a row whose series has more than 10 prices, when the view is drawn at full width, then its sparkline is 10 characters wide. (D50)
+- **S10.5** [view] Given a row whose day change is positive, when it is drawn on a terminal at full width, then its sparkline is in the terminal palette's green. (D25, D50)
+- **S10.6** [view] Given a row whose day change is negative, when it is drawn on a terminal at full width, then its sparkline is in the terminal palette's red. (D25, D50)
+- **S10.7** [view] Given a row whose day change is exactly zero, when it is drawn on a terminal at full width, then its sparkline has no colour. (D50)
+- **S10.8** [view] Given a terminal one cell narrower than the widest row with its sparkline, when the view is drawn, then no row has a sparkline. (D50)
+- **S10.9** [view] Given the source's answer holds prices from before the regular session opened or after it closed, when the row is drawn, then its sparkline does not include them. (D50)
+- **S10.10** [view] Given a row whose prices rose steadily all day, when the view is drawn at full width, then the lowest character of its sparkline is on the left and the highest on the right. (D50)
 
 ### S11 — The watchlist is a file I edit
 
@@ -837,6 +844,7 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 
 | Item | Affects | Blocks the design or the build? |
 |---|---|---|
+| Q99–Q102: the sparkline's shape (how the day fills 10 characters, glyphs and scale, rows without a fresh series, the column's header and place) | 7.3, S10 | Build: the criteria they add wait on the answers |
 | Whether the trading period in the source's answer is right on a market holiday (F14, backlog; next check on US Thanksgiving, 2026-11-26) | 6.1, S5.9 | Design: no, but it needs a fallback. Build: S5.9 cannot pass until it is known |
 | Q62: how open, closed and holidays are decided, and what a closed or holiday market may cost in requests (log: waits on research) | 6.1, S5.3–S5.9; 6.1 says a holiday costs none | Build: yes, for the market-hours part only |
 | Which answers the default source gives when it rate-limits or refuses (F3 names one; an unknown ticker is told apart, F27; backlog) | D50, 6.3 | Build: yes, for the source part |
@@ -878,7 +886,7 @@ Every decision in the log, and where the spec realises it.
 | D22 | design, see section 10 |
 | D23 | 6.5, 7.1, S13.2–S13.4, QR3 |
 | D24 | process (licence of the repository) |
-| D25 | 7.3, 7.4, S13.7, S16 |
+| D25 | 7.3, 7.4, S10.5, S10.6, S13.7, S16 |
 | D26 | 1, 7.1, 7.2, 7.7 |
 | D27 | design, see section 10 |
 | D28 | 7.2; the parser is design (section 10) |
