@@ -630,13 +630,13 @@ BRL_VERIFY_LONG=1 mise exec -- go test -tags verification ./verification/ -run T
 | S5.10 | `TestVerifyView_S5_10_IntervalFloor` | `refresh_seconds = 3`, 60 s: the shortest gap between two arrivals of one symbol at least 10 s (50 ms allowed), at most 7 per symbol. 2026-11-25: 6 per symbol, shortest gap 10.004 s; status line `... · refresh_seconds is below 10; using 10` |
 | S8.3 | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S8_3` (partial); `TestVerifyLong_View_S8_3_NotFoundThreeHours` (LONG) | Partial: in 100 s, XXXX9 (404) is asked for once (at start), not on every interval. The hour itself only in the 3-hour LONG check, not run yet |
 | S4.4 (shown again) | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S4_4` | PETR4 at the top and in two groups: as many requests as VALE3 (±1), never two within 5 s; shown in its three places |
-| S15.3 | `TestVerifyView_QR6_S15_3_HealthyThreeMinutes/S15_3`; `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | Scaled: 3 min at 10 s in place of 8 h. 20 tickers and 3 summary entries, quotes change on every answer (`vary_quotes`); the size (regular files under the cache folder) after the first full refresh, then every 10 s. 2026-11-25: first 22101 bytes, min 22032 (−0.3%), max 22312 (+1.0%), 18 samples, 410 requests after the first refresh. The 8-hour run (interval 60 s, sampled every minute) has not been run |
+| S15.3 | `TestVerifyView_QR6_S15_3_HealthyThreeMinutes/S15_3`; `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | Baseline checked against D108 (2026-11-26, "the first refresh in which every row has its full sparkline"): the stand-in's made-up series already holds 24 prices per entry (the session from 2 h before the answer, every 5 min) in the first answer, so the first full refresh is that refresh; unchanged. Scaled: 3 min at 10 s in place of 8 h. 20 tickers and 3 summary entries, quotes change on every answer (`vary_quotes`); the size (regular files under the cache folder) after the first full refresh, then every 10 s. 2026-11-25: first 22101 bytes, min 22032 (−0.3%), max 22312 (+1.0%), 18 samples, 410 requests after the first refresh. The 8-hour run (interval 60 s, sampled every minute) has not been run |
 
 | Requirement | Check | Note |
 |---|---|---|
 | QR6 | `TestVerifyView_QR6_S15_3_HealthyThreeMinutes/QR6`; literal: `TestVerifySlow_View_QR6_TenMinutes` (SLOW) | Scaled: 3 min in place of 10, sampled every 10 s, interval 10 s, 20 tickers. Every row has a price and no `!` age mark in every sample; PETR4's price changes on screen (set-up). 2026-11-25: 18 samples, no stale mark, PETR4 changed 17 times |
 | QR11 | `TestVerifyView_QR11_KeysDuringHeartbeatRefresh/QR11`, `/QR11_answered` | The view opens on a healthy source; the stand-in then answers after 4 s (D100; was 5 s) with PETR4 at 12.34; when the first request of the next heartbeat refresh has arrived, `?`, `x`, `s`, `s` are pressed. `QR11_answered`: the held refresh is answered (its requests 200, PETR4 `R$ 12,34`, no stale row, no error line). Not parallel. 2026-11-25 with 5 s: 1 to 7 ms for each key; with 4 s: 8 to 17 ms, pressed 3 to 542 ms after the held request arrived, 8 requests in flight. Until the emulator, not a real terminal's paint |
-| QR8 (view) | `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | As S15.3, 8 h (`BRL_VERIFY_LONG_DURATION`) at 60 s; also asserts QR6 every minute. Not run yet |
+| QR8 (view) | `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | Baseline as S15.3 (D108: full sparklines from the first refresh, unchanged). As S15.3, 8 h (`BRL_VERIFY_LONG_DURATION`) at 60 s; also asserts QR6 every minute. Not run yet |
 
 Recorded outside the criteria: with B3 closed 60 s ago and the quote time at the close (`TestVerifyView_S5_8_RequestedAgainAfterClose/observation_quote_at_close`), the B3 rows are still requested every interval: a quote at the close does not end the period after the close (6.1 "the closing quote has arrived"; what counts as the closing quote waits on Q62). The heartbeat drifts by about 7 ms per interval (+90.07 s after nine intervals of 10 s), so each next refresh is timed from the end of the last, not from a fixed schedule; at 60 s over 8 h that is about 3.5 s, within S5.1's range.
 
@@ -796,9 +796,9 @@ file; undo, save; `rm` the file and watch `... was deleted ...`; write it back.
 
 ## The sparkline, slice 4 increment 1 (`sparkline_increment1_verify_test.go`)
 
-S10.1 to S10.22 on the real view, built on the recommended answers of Q104
-(`TODAY` starts at the sparkline's column; asserted with S10.20 and S10.22)
-and Q105 (halfway takes the higher level; recorded only). The sparkline is
+S10.1 to S10.23 on the real view. Q104 and Q105 were answered by D109
+(`TODAY` starts where the sparklines start, now in S10.20) and D110 (halfway
+takes the higher level, now S10.23); both asserted. The sparkline is
 read as the last run of `▁▂▃▄▅▆▇█` blocks on a row; its column from the
 emulator's cells. Added to the stand-in, without changing the existing
 controls: `series` (`{"<symbol>": {"closes": [...], "before": [...],
@@ -820,6 +820,7 @@ mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S1
 | S10.16 | `TestVerifyView_S10_16_NoDataYet` | Empty cache, answers held: each row its ticker and 7 `—`, nothing after the time's `—` |
 | S10.18 | `TestVerifyView_S10_18_StaleKeepsSparkline` | Interval 10 s; 503 after the first fetch: PETR4 `!10s` with the same `▁▂▃▃▄▅▆▆▇█`, and every row's line unchanged |
 | S10.19 | `TestVerifyView_S10_19_CachedSparkline` | A view run leaves the cache; answers then held 20 s: PETR4 shows `▁▂▃▃▄▅▆▆▇█` before any answer |
+| S10.23 | `TestVerifyView_S10_23_HalfwayTakesHigher` | PETR4 10, 10.5, 17 (10.5 is level 0.5): `▁▂█`. Since 2026-11-26 (D110); before, the halfway price was only recorded (below) |
 | S10.22 | `TestVerifyView_S10_22_AlignedAfterWidestTime/{own_rows,20_tickers}` | `print` leaves the cache; 12 s later VALE3 answers 503 (`!12s`): every sparkline and `TODAY` start two cells after the end of `HH:MM !12s`. QR1 |
 
 Recorded outside the criteria (`TestVerifyView_SparklineEdgeCases_Observations`,
@@ -828,7 +829,7 @@ gap, 15, 19 drew `▁▃▅█`, 4 characters); one price draws `▄`; a range o
 to 100000 drew `▁▄█▁█`; 34.150 to 34.153 drew `▁▃▆▃█` (the smallest range is
 stretched to the full height); 0, 1, 14 drew `▁▂█` and ITUB4's 34, 35, 34.5,
 36 drew `▁▅▃█`, both prices at exactly level 0.5 or 3.5 taking the higher
-level (Q105's recommendation). `print` (table) has no sparkline and no
+level (since asserted as S10.23, D110). `print` (table) has no sparkline and no
 `TODAY`, `print --json` no series key (7.4, 7.5). With 20 tickers every
 sparkline lines up (S10.22).
 
