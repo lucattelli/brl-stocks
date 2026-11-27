@@ -1,6 +1,6 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
 Source: `research/grilling-log.md` (decisions D1–D97, facts F1–F38).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
@@ -553,6 +553,7 @@ As the user, I want to force a refresh when it can help and be told when it cann
 - **S7.7** [view, print] Given `r` was pressed two seconds ago, when `r` is pressed again, then no row is requested a second time. (D50)
 - **S7.8** [view, print] Given a not-found row tried ten minutes ago and an unchanged config, when `r` is pressed, then that ticker is not requested. (D39)
 - **S7.9** [view] Given B3 is open, 20 B3 rows and a source that answers within one second, when `r` is pressed, then every B3 row is requested before one refresh interval has passed. (D32, D62)
+- **S7.10** [view] Given the source refused a request and the view stays open, when the wait ends and the source answers, then the rows are requested again without a key press. (D19, D50)
 
 ### S8 — A ticker the source does not know
 
@@ -611,6 +612,7 @@ As the user, I want the watchlist in a config file that I edit by hand and keep 
 - **S11.17** [view, print] Given a config with a key the tool does not know, when the tool starts, then the watchlist is shown. (D50)
 - **S11.18** [view, print] Given a config with 25 tickers, when the view is drawn, then a warning in the status line says the tool is designed for 20. (D50)
 - **S11.19** [view] Given the view is open, when the config file is deleted, then the error line says the file is gone. (D50)
+- **S11.20** [view] Given no file at the default config path and the view open with the example watchlist, when a valid config file is saved at that path, then its watchlist replaces the example within 5 seconds. (D12, D50)
 
 ### S12 — No config yet
 
@@ -860,14 +862,14 @@ Every decision in the log, and where the spec realises it.
 | D9 | 4 (Quote), 7.3, S1.2, S14.2 |
 | D10 | 2, 4, 7.3, S3.1, S3.3, S3.6 |
 | D11 | 4, 7.3, S2, QR1 |
-| D12 | 2, 4, 6.4, 7.2, S11 |
+| D12 | 2, 4, 6.4, 7.2, S11, S11.20 |
 | D13 | 2 (non-goals), 7.3, S10 |
 | D14 | 4, 6.1, 7.2, S5.1, S5.2, QR4, QR6 |
 | D15 | 4 (Market), 6.1, 6.5, 7.3, S5.3–S5.9, S13.5 |
 | D16 | 4 (Group), 7.2, 7.3, S4, S13.8 |
 | D17 | 2, 4 (Ticker), 5, S3, S17.2 |
 | D18 | 2 (non-goals), 7.1, 7.4, 7.5, S13.1, S14 |
-| D19 | 2, 6.2, 6.3, 7.3, S6, S13.6 |
+| D19 | 2, 6.2, 6.3, 7.3, S6, S13.6, S7.10 |
 | D20 | 2 (non-goals), 4 (Quote invariants), 7.7, S1.4, S15, QR2, QR8; the store itself is design (section 10) |
 | D21 | 2 (non-goals); scope. Its borrowed one-shot contract is the basis of D44 |
 | D22 | design, see section 10 |
