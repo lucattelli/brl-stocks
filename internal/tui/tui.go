@@ -44,6 +44,9 @@ type Model struct {
 	health market.Health
 	// unwritable: the cache folder could not be written at the last cycle
 	unwritable bool
+	sort       render.Sort
+	top        int  // the first line of the list on screen
+	help       bool // the list of keys is shown
 }
 
 // New makes the model of a view about to open.
@@ -78,11 +81,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.top = m.clampTop()
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		key := msg.String()
+		switch {
+		case key == "ctrl+c":
 			return m, tea.Quit
+		case m.help:
+			m.help = false // any key closes the help (7.3)
+		case key == "q":
+			return m, tea.Quit
+		case key == "?":
+			m.help = true
+		case key == "s":
+			m.sort = (m.sort + 1) % 3
+		// Scrolling moves the list by one screen line, group headers
+		// included; left and right do nothing (Q85, Q84: the recommended
+		// answers, pending).
+		case key == "down" || key == "j":
+			m.top++
+		case key == "up" || key == "k":
+			m.top--
 		}
+		m.top = m.clampTop()
 	case cacheLoaded:
 		m.snap = merge(m.snap, msg.snap)
 		m.health = msg.health
@@ -145,39 +166,90 @@ func merge(mem, read market.Snapshot) market.Snapshot {
 	return out
 }
 
-// View draws the screen, top to bottom: summary line, column header, rows
-// under their group headers, then at the foot the error line (only when
-// there is a problem) and the status line (spec 7.3).
-func (m Model) View() tea.View {
-	v := render.View{Cfg: m.o.Cfg, Snap: m.snap, Health: m.health, Now: m.o.Now(), Colour: m.o.Colour}
-	var body []string
-	if s := render.SummaryLine(v); s != "" {
-		body = append(body, s, "")
-	}
-	body = append(body, render.Lines(v)...)
+// helpText is the list of keys (7.3).
+var helpText = []string{
+	"keys",
+	"",
+	"  q        quit (Ctrl+C too)",
+	"  r        refresh now",
+	"  s        sort: file order, day change, ticker",
+	"  ↑ / k    scroll up one line",
+	"  ↓ / j    scroll down one line",
+	"  ?        this help; any key closes it",
+}
 
-	var foot []string
+func (m Model) render() render.View {
+	return render.View{Cfg: m.o.Cfg, Snap: m.snap, Health: m.health, Now: m.o.Now(),
+		Colour: m.o.Colour, Sort: m.sort, Width: m.width}
+}
+
+// layout splits the screen: the fixed lines at the top (summary line and
+// column header, which do not scroll, D11), the list that scrolls, and the
+// foot (error line and status line).
+func (m Model) layout() (head, list, foot []string) {
+	v := m.render()
+	if s := render.SummaryLine(v); s != "" {
+		head = append(head, s, "")
+	}
+	table := render.Lines(v)
+	head = append(head, table[0])
+	list = table[1:]
+	if m.help {
+		head, list = nil, helpText
+	}
 	if c := render.Cause(v); c != "" {
 		foot = append(foot, c)
 	}
-	status := []string{render.MarketLine(v), "sort: file order"}
+	status := []string{render.MarketLine(v), "sort: " + m.sort.String()}
 	status = append(status, m.o.Notes...)
 	if m.unwritable {
 		// Said once, in the status line, for as long as it holds (7.7, D60).
 		status = append(status, "quotes are not kept: "+m.o.Engine.C.Dir+" cannot be written")
 	}
 	foot = append(foot, strings.Join(status, " · "))
+	return head, list, foot
+}
 
-	lines := body
+// room is how many lines of the list fit on the screen.
+func (m Model) room(head, foot []string) int {
+	n := m.height - len(head) - len(foot)
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// clampTop keeps the scroll inside the list: no blank screen past its end.
+func (m Model) clampTop() int {
+	if m.help || m.height <= 0 {
+		return m.top
+	}
+	head, list, foot := m.layout()
+	top, most := m.top, len(list)-m.room(head, foot)
+	if top > most {
+		top = most
+	}
+	if top < 0 {
+		top = 0
+	}
+	return top
+}
+
+// View draws the screen, top to bottom: summary line, column header, rows
+// under their group headers, then at the foot the error line (only when
+// there is a problem) and the status line (spec 7.3).
+func (m Model) View() tea.View {
+	head, list, foot := m.layout()
+	var lines []string
 	if m.height > 0 {
-		room := m.height - len(foot)
-		if room < 0 {
-			room = 0
+		if !m.help {
+			top := m.clampTop()
+			list = list[top:]
 		}
-		if len(body) > room {
-			body = body[:room]
+		if r := m.room(head, foot); len(list) > r {
+			list = list[:r]
 		}
-		lines = append([]string{}, body...)
+		lines = append(append([]string{}, head...), list...)
 		for len(lines)+len(foot) < m.height {
 			lines = append(lines, "")
 		}
@@ -186,7 +258,7 @@ func (m Model) View() tea.View {
 			lines = lines[len(lines)-m.height:]
 		}
 	} else {
-		lines = append(append([]string{}, body...), foot...)
+		lines = append(append(append([]string{}, head...), list...), foot...)
 	}
 	tv := tea.NewView(strings.Join(lines, "\n"))
 	tv.AltScreen = true

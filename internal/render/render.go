@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,6 +22,54 @@ type View struct {
 	Now    time.Time
 	Zone   *time.Location // for quote times; the machine's zone
 	Colour bool           // colour the day change: a terminal, and NO_COLOR not set (D25)
+	Sort   Sort           // the order of the rows inside each group; the table keeps file order
+	Width  int            // the screen's width, to drop columns from; 0: no limit (the table)
+}
+
+// Sort is the order of the rows inside each group (D31, D50).
+type Sort int
+
+const (
+	FileOrder Sort = iota // as in the file
+	ByChange              // day change percent, highest first
+	ByTicker              // ticker, A to Z
+)
+
+// String names the order as the status line gives it.
+func (s Sort) String() string {
+	switch s {
+	case ByChange:
+		return "day change"
+	case ByTicker:
+		return "ticker"
+	}
+	return "file order"
+}
+
+// sorted orders one group's rows by v.Sort; rows without a quote go last,
+// in file order (D50).
+func (v View) sorted(tickers []market.Instrument) []market.Instrument {
+	out := append([]market.Instrument{}, tickers...)
+	if v.Sort == FileOrder {
+		return out
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		_, qi := v.dayChange(out[i])
+		_, qj := v.dayChange(out[j])
+		if qi != qj {
+			return qi
+		}
+		if !qi {
+			return false
+		}
+		if v.Sort == ByTicker {
+			return out[i].Symbol < out[j].Symbol
+		}
+		_, pi := change(v.Snap[out[i]].Quote)
+		_, pj := change(v.Snap[out[j]].Quote)
+		return pi > pj
+	})
+	return out
 }
 
 // Colours of the terminal's own palette (D25, spec 7.3).
@@ -169,7 +218,7 @@ func Lines(v View) []string {
 		if g.Name != "" {
 			lines = append(lines, line{text: g.Name})
 		}
-		for _, in := range g.Tickers {
+		for _, in := range v.sorted(g.Tickers) {
 			lines = append(lines, line{cells: v.row(in), in: in})
 		}
 	}
@@ -181,6 +230,34 @@ func Lines(v View) []string {
 			}
 		}
 	}
+	// A narrow screen drops columns in this order: day low and high, name,
+	// day change value; ticker, last price, percent and time always remain
+	// (D50). The sparkline, first to go, is not drawn yet.
+	shown := []bool{true, true, true, true, true, true, true, true}
+	total := func() int {
+		n, cols := 0, 0
+		for i, w := range width {
+			if shown[i] {
+				n += w
+				cols++
+			}
+		}
+		return n + 2*(cols-1)
+	}
+	for _, drop := range [][]int{{5, 6}, {1}, {3}} {
+		if v.Width <= 0 || total() <= v.Width {
+			break
+		}
+		for _, i := range drop {
+			shown[i] = false
+		}
+	}
+	if !shown[3] {
+		header[4] = header[3]
+		if n := utf8.RuneCountInString(header[4]); n > width[4] {
+			width[4] = n
+		}
+	}
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
 		if l.cells == nil {
@@ -188,11 +265,16 @@ func Lines(v View) []string {
 			continue
 		}
 		var b strings.Builder
+		first := true
 		for i, c := range l.cells {
+			if !shown[i] {
+				continue
+			}
 			pad := strings.Repeat(" ", width[i]-utf8.RuneCountInString(c))
-			if i > 0 {
+			if !first {
 				b.WriteString("  ")
 			}
+			first = false
 			// The change value and percent (columns 3 and 4) are coloured after
 			// padding, so that colour codes do not change the alignment.
 			if val, ok := v.dayChange(l.in); ok && l.in.Symbol != "" && (i == 3 || i == 4) {
