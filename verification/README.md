@@ -450,3 +450,32 @@ checks pass, 0 fail, 6 skipped; the 7 new checks and the 12 criteria pass.
 Not verified from outside, for these: how the summary line and group headers
 look on a real terminal; the hand check above shows them (its config has a
 group).
+
+### Increment 3: market states, stale rows, the error line, not-found rows (`view_increment3_verify_test.go`)
+
+The 15 criteria of increment 3 in `research/build/full-screen-view/scope.md`,
+on the real view. In this slice the view fetches once when it opens, so "a
+refresh fails" is that fetch at start failing; the cache is left by `print`
+before it. The error line is a screen line that starts with one of the four
+cause phrases of 7.3; the status line is the last line with text. Run of
+2026-11-25: the ordinary run of all files, about 2 min; 131 top-level checks
+pass, 0 fail, 7 skipped (SLOW and LONG); the 8 new ordinary checks and the 15
+criteria pass. "Scaled" and "QR1" as above.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S5.4, S5.5 | `TestVerifyView_S5_4_5_USClosed` | US closed 2 h ago: AAPL and MSFT show the close and its time, no stale mark; status line `B3 open · US closed · sort: file order` |
+| S5.6 | `TestVerifyView_S5_6_S6_7_S6_10_CachedAges/S5_6` | Scaled: the last successful fetch of the closed US rows was 25 s ago (more than two intervals of 10 s), not two days; the source holds its answers. No stale mark on the US rows |
+| S5.12 | `TestVerifyView_S5_12_FailedBeforeCloseStaysStale` | `open_end_unix` ends the session at +22 s; a view run at +12 s meets 503 (error line); a view run at +27 s with answers held reads `B3 closed · US closed` and every row is stale |
+| S6.1, S6.2, S6.3, S6.9 | `TestVerifyView_S6_1_2_3_9_FailedFetch/*/*/S6_1` ... `/S6_9` | Scaled: interval 10 s, cache 12 s old; status 503 and no connection. Last prices kept; every row `!12s` (± 2 s of the real age); one error line, e.g. `source unreachable: 5 rows not updated · next attempt 03:22` (20 with QR1); the count is the rows, not the summary entries. QR1 |
+| S6.7 | `TestVerifyView_S5_6_S6_7_S6_10_CachedAges/S6_7` | Scaled: last success 25 s ago, no failure since, answers held (no answer arrived during the run): the open B3 rows are stale. "Woke from sleep" is not simulated |
+| S6.8 | `TestVerifyView_S6_8_OnlyFailedRowStale` | Cache 12 s old; VALE3 answered 503: only VALE3 stale; error line `source unreachable: 1 row not updated · ...`. QR1 |
+| S6.10 | `TestVerifyView_S5_6_S6_7_S6_10_CachedAges/S6_10`; literal: `TestVerifySlow_View_S6_10_TwelveMinutes` (SLOW) | Scaled: 25 s, mark `!25s`. The 12-minute check (`BRL_VERIFY_SLOW=1 ... -run TestVerifySlow_View_S6_10`, about 13 min) has not been run yet |
+| S6.11 | `TestVerifyView_S6_11_SummaryEntryFails` | Empty cache, `^GSPC` 503: `source unreachable: summary not updated · next attempt 03:22`, no count |
+| S8.1, S8.2, S8.5 | `TestVerifyView_S8_1_2_5_NotFound/*/S8_1`, `/S8_2`, `/S8_5` | Stand-in 404 for XXXX9: `not found` and `—` in the other columns; the other rows fresh; no error line. QR1 |
+
+Not verified from outside, for these: the later refreshes while the view
+stays open (slice 3); how the marks and the error line look on a real
+terminal (the hand check above, with the stand-in switched to
+`curl -X POST -d '{"status":503}' http://127.0.0.1:18765/_control` after a
+first run and before a second one).
