@@ -187,11 +187,17 @@ type viewResult struct {
 // viewRows, with TERM=xterm-256color and extra added to the environment.
 func (e *env) openView(extra []string, args ...string) *view {
 	e.t.Helper()
-	p, err := openPTY(viewCols, viewRows)
+	return e.openViewSized(viewCols, viewRows, extra, args...)
+}
+
+// openViewSized is openView on a terminal of cols x rows.
+func (e *env) openViewSized(cols, rows int, extra []string, args ...string) *view {
+	e.t.Helper()
+	p, err := openPTY(cols, rows)
 	if err != nil {
 		e.t.Fatalf("pseudo-terminal: %v", err)
 	}
-	v := &view{e: e, args: args, p: p, emu: vt.NewEmulator(viewCols, viewRows),
+	v := &view{e: e, args: args, p: p, emu: vt.NewEmulator(cols, rows),
 		modes: map[string]bool{}, notify: make(chan struct{}, 1), done: make(chan struct{})}
 	v.emu.SetCallbacks(vt.Callbacks{
 		EnableMode:  func(m ansi.Mode) { v.modes[fmt.Sprintf("%v", m)] = true },
@@ -244,7 +250,7 @@ func (e *env) openView(extra []string, args ...string) *view {
 	cmd.SysProcAttr = ttyAttr()
 	v.cmd = cmd
 	e.logf("\n$ brl-stocks %s   (on a pseudo-terminal %s, %dx%d)\nENV        %s TERM=xterm-256color %s\nTERMIOS BEFORE  %s\n",
-		strings.Join(args, " "), p.name, viewCols, viewRows, strings.Join(e.environ()[1:], " "), strings.Join(extra, " "), fmtTermios(v.tBefore))
+		strings.Join(args, " "), p.name, cols, rows, strings.Join(e.environ()[1:], " "), strings.Join(extra, " "), fmtTermios(v.tBefore))
 	v.start = time.Now()
 	if err := cmd.Start(); err != nil {
 		p.close()

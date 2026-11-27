@@ -104,11 +104,18 @@ func (e *Engine) cycle(ctx context.Context, r Request) Result {
 		// Claim, under the lock: read again, plan against what is on disk,
 		// mark the rows of this round.
 		unlock, err := e.C.Lock(e.After)
-		if err != nil {
+		switch {
+		case errors.Is(err, cache.ErrBusy) || (err != nil && !r.MayFetchUnpaced):
 			res.Warn = err
 			return res // print shows what it has; the view tries again at its next beat
+		case err != nil:
+			// The folder cannot be written, so nothing can be locked: the
+			// view claims in memory only, against what it read (D60).
+			res.Warn = err
+			unlock = func() {}
+		default:
+			res.Snap, res.Health = e.C.Load(), e.C.LoadSource(name)
 		}
-		res.Snap, res.Health = e.C.Load(), e.C.LoadSource(name)
 		plan := e.plan(r, res.Snap, res.Health)
 		if len(plan.Due) == 0 {
 			unlock()
@@ -120,14 +127,19 @@ func (e *Engine) cycle(ctx context.Context, r Request) Result {
 			en.ClaimedAt, en.ClaimID = now, id
 			res.Snap[in] = en
 		}
-		werr := e.C.Write(res.Snap)
+		werr := res.Warn
+		if werr == nil {
+			werr = e.C.Write(res.Snap)
+		}
 		seenGen := res.Health.Gen
-		if werr == nil && plan.Probe {
+		if plan.Probe {
 			res.Health.ProbeClaimedAt, res.Health.ProbeClaimID = now, id
 			res.Health.Gen++
 			res.Health.UpdatedAt = now
 			seenGen = res.Health.Gen
-			werr = e.C.WriteSource(name, res.Health)
+			if werr == nil {
+				werr = e.C.WriteSource(name, res.Health)
+			}
 		}
 		unlock()
 		if werr != nil {
