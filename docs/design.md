@@ -181,6 +181,37 @@ The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a 
 - **Rejected:** a `Step(State, Event)` function returning effects as data (`proposal-extensible.md`, `rebuttal-extensible.md` E1). Version 1, which has had no release since 2025-09 (F18).
 - **Consequence:** tests of the view send messages to the model, run the commands it returns against a stand-in source and a fixed clock, and assert on the rendered rows.
 
+### The view's test boundary (proposed 2026-11-24, pending approval in slice 2's first PR)
+
+- **Proposed:** `deps.Deps` gains one edge, `Terminal *deps.Terminal`. Outside tests it is nil, and `brl-stocks` with no command runs the view on the process's own terminal through Bubble Tea. In a test it holds the size when the view opens, a channel of inputs (a key, or a resize to a new size), and a function that receives every frame the view shows. `app.Run` returns when the view quits, with its exit status.
+- **The driver.** With a `Terminal`, `app` drives the same Bubble Tea model without the library's program loop, the way the loop does: messages are handled one at a time; each command the model returns runs in its own goroutine and its message comes back to the queue; after every update, `View()` becomes a frame for `Draw`. Every wait in the view goes through `deps.After` and every reading of the time through `deps.Now`, never the library's own ticks, so a test decides when time passes.
+- **Settling.** Each frame carries `Inputs`, the number of inputs handled so far, and `Idle`, true when every command still running is waiting on the source or on `After`. A test that must show that nothing changed takes the idle frame after input n, sends a key, and compares it with the idle frame after input n+1.
+- **Frames.** `Lines` has exactly `Height` entries; a line is not padded, and holds at most `Width` terminal cells, counted after SGR codes are taken out (`—` and `▂` are one cell each). `app` cuts each line to the width; the library's renderer, which would otherwise do it, is not in the path. Colour uses only `ESC[32m` (green), `ESC[31m` (red) and `ESC[0m` (reset), from the terminal's own 16-colour palette as `print` does; the view uses no other SGR code. With `NO_COLOR` set, read through `deps.LookupEnv` only, a frame has no SGR code at all.
+- **Inputs.** Named keys are constants: `deps.KeyUp`, `KeyDown`, `KeyLeft`, `KeyRight`, `KeyEnter`, `KeyEsc`, `KeyTab`, `KeyCtrlC`. Any other key is one printable character, as itself (`"q"` and `"Q"` are different keys). A name that is neither makes `Run` panic, so a mistyped test fails loudly. The view reads inputs until it quits and then stops: a test sends on a buffered channel, or with a `select`. A closed channel means nothing more will come; the view keeps running. A cancelled `ctx` ends the view as `q` does, with exit status 0.
+- **`IsTTY`** is ignored with a `Terminal`: the view is always on a terminal.
+- **Serves:** slice 2's acceptance tests through the same entry point as `print` (S1, S2, S4, S9, S16 in the view, QR11); a test writer needs no knowledge of the library.
+- **Rejected:** tests on the model's messages (the consequence written under D58), which couple the tests to the library's types; tests on the raw output through a pseudo-terminal, which needs a terminal emulator in every test and is what verification does (D86).
+- **Consequence:** the acceptance tests do not exercise the library's program loop. Verification covers, through a pseudo-terminal and `github.com/charmbracelet/x/vt` (D86): raw mode and the alternate screen; restoring the terminal on `q` and Ctrl+C (S1.3); decoding real keys, Ctrl+C included; the renderer's own cutting to the width; QR11 on the real loop; and QR2, which is measured from process start, where `Run` cannot see.
+
+```go
+package deps
+type Terminal struct {
+    Width, Height int          // the size when the view opens
+    Input <-chan Input         // keys and resizes, in order
+    Draw  func(Frame)          // called with every frame
+}
+type Input struct {
+    Key           string       // a Key... constant, or one printable character
+    Width, Height int          // a resize, when Key is ""
+}
+type Frame struct {
+    Width, Height int
+    Lines  []string            // exactly Height lines; colour as SGR codes, nothing else
+    Inputs int                 // inputs handled so far
+    Idle   bool                // every running command waits on the source or the timer
+}
+```
+
 ### Platforms (D59)
 
 - **Chosen:** Linux and macOS.
@@ -219,6 +250,7 @@ The protocol is modelled in `models/refresh.qnt` (Quint). Its six properties: a 
 | Bubble Tea | v2.1.2 (checked 2026-11-23, F18) | The full-screen view | D27, D58 |
 | Lip Gloss | The release that pairs with Bubble Tea 2; to confirm at the start of the build | Layout and colour from the terminal's palette | D27, D25 |
 | A TOML parser (`github.com/BurntSushi/toml` proposed) | To confirm at the start of the build | The config file | D28 |
+| `github.com/charmbracelet/x/vt` (proposed, pending approval) | v0.1.0 (2026-10-12) | A terminal emulator for `verification/` only: turns the view's output into the screen a person would see. About 4,000 lines; adds one small package beyond what Bubble Tea already brings | D86 |
 
 Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and number formatting by hand (`proposal-simplest.md`, section 4).
 

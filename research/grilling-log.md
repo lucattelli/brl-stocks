@@ -175,6 +175,10 @@ Q77 is answered (D79).
 
 Q79–Q83 (how the build lands from slice 2 on) are answered: D82–D86.
 
+Open, from slice 2's test boundary (asked 2026-11-24 in PR 0, round 23):
+- Q84 — Do the left and right arrows scroll?
+- Q85 — Does scrolling by one row count group header lines?
+
 Waiting on research, not yet asked:
 - Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). Waits on the holiday check of F14 (2026-11-26) and on the closing-quote measurement in the backlog. F30 already shows that the 30 minutes after the close accepted in D50 (P31) are too short for B3, so Q62 will also have to revisit that number
 
@@ -195,8 +199,8 @@ _The product is built in slices: a group of acceptance criteria that reaches the
 | # | Slice | Criteria | Step | Open |
 |---|---|---|---|---|
 | 1 | One-shot mode (`brl-stocks print`) | Every criterion tagged `print` (129 with S6.11), by `research/build/one-shot/scope.md`; QR1, QR3, QR4, QR5, QR7, QR8, QR10, QR12 | Done: increment 1 (F32–F35) and increment 2 (F36, F37) | S5.9 and S5.11 wait on Q62; hand checks: S17.1 and QR10 (real source), QR12 (a capture of a real run); QR4 and QR5 measured without the view; not verified: the 30-minute cap on the wait, the hourly retry at its full hour; Q62 may change open, close and holidays |
-| 2 | Full-screen view, static | S1; S2; S3.6; S4.1–S4.3; S9; S11.13, S11.18; S15.5, S15.6; S16 in the view | Not started | Next |
-| 3 | Live refresh in the view | S5; S6; S7; S8; S11.3, .4, .6, .10, .11, .14, .19; S15.3 | Not started | Needs Q62 answered before it is finished |
+| 2 | Full-screen view, static | 95 criteria tagged `view` in five increments, by `research/build/full-screen-view/scope.md` (checked by a fresh agent); QR1, QR2, QR7, QR10, QR11, QR12 | PR 0 (scope, the view's test boundary, the emulator library) open, pending approval; increments stacked on it | Q84, Q85; the boundary change to `docs/design.md` and `github.com/charmbracelet/x/vt` (D86) await approval |
+| 3 | Live refresh in the view | 28 criteria tagged `view`: S5.1–S5.3, S5.7, S5.8, S5.10; S6.4–S6.6; S7; S8.3, S8.4; S11.3, .4, .6, .10, .11, .14, .19; S15.3 (by slice 2's scope) | Not started | Needs Q62 answered before it is finished |
 | 4 | Sparkline | S10 | Not started | |
 | G1 | Groundwork: CI (D83) | — | Done 2026-11-24 (PR #1): passed; failed on a planted fault (wrong green, caught by TestS16_1); passed on the revert | Branch protection on `main` (D84), set by the user |
 
