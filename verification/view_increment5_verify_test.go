@@ -426,10 +426,12 @@ func TestVerifyView_S9_8_Help(t *testing.T) {
 // S9.9 [view] Given the view is open, when a key outside that list is
 // pressed, then nothing changes. Keys x, z, 5, space, Tab and Enter, each
 // followed by a wait of up to 2 s for a change (none is expected, so the
-// absence of a change can only be observed over a time).
+// absence of a change can only be observed over a time). The default
+// interval (60 s): since slice 3 the view refreshes itself, and a refresh
+// during the 12 s watched (at 10 s) would change the screen without a key.
 func TestVerifyView_S9_9_OtherKeysDoNothing(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t, "S9.9 (view)", baseConfig)
+	e := newEnv(t, "S9.9 (view)", defaultIntervalConfig)
 	v := e.openView(nil)
 	s0, _ := v.waitStable("every row with a price", 10*time.Second, 500*time.Millisecond, rowsShown(tickers))
 	type res struct {
