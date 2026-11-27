@@ -1,7 +1,7 @@
 # brl-stocks (stock monitor TUI) — Specification
 
-Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and S10.4–S10.10 (the sparkline as 7.3 already states it, with no criterion, found by slice 4's scope), and for D104–D107 (7.3, S10.11–S10.22), and for D108–D110 (QR8, S15.3, 7.3, S10.20, S10.23), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
-Source: `research/grilling-log.md` (decisions D1–D110, facts F1–F40).
+Status: approved, 2026-11-24 (D80), as updated for D79; updated afterwards for D81 (7.3, S6.11) and for D92–D96 (7.1, 7.3, S2.9, S2.10, S9.6, S9.7, S9.11, S12.6–S12.8, S15.10, S18.5, S18.6), and S7.10 and S11.20 (transitions of 6.3 and 6.4 that had no criterion, found by slice 3's scope check), and for D98 (6.3), and for D99–D102 (6.3, 7.2, 7.3, QR11), and S10.4–S10.10 (the sparkline as 7.3 already states it, with no criterion, found by slice 4's scope), and for D104–D107 (7.3, S10.11–S10.22), and for D108–D110 (QR8, S15.3, 7.3, S10.20, S10.23), and for D111–D113 (4, 5, 6.1, S5.3, S5.8, S5.9, S5.13–S5.17, S13.5, 10, 12), and the approval stands. Earlier approvals: D52, D67, D72, D78. Open proposals: 0.
+Source: `research/grilling-log.md` (decisions D1–D113, facts F1–F47).
 
 Each requirement cites the decision (D#) or fact (F#) it comes from. Anything the log does not decide is marked as a proposal (P#) and listed in section 11.
 
@@ -120,7 +120,7 @@ Invariants:
 Invariants:
 
 - The two markets open and close independently (D15).
-- Rows of a closed market are not refreshed automatically (D15). The short period after the close in 6.1 is an exception (D50).
+- Rows of a closed market are not refreshed automatically (D15). The settle time after the close in 6.1 is an exception (D50, D111).
 
 ### Quote
 
@@ -156,7 +156,8 @@ External facts that shape behaviour and that nobody chose.
 - US quotes from the default source lag about 1 second, and USD/BRL about 10 seconds (F2, F15). So the two markets differ in freshness, and only the quote time tells the user which is which.
 - The default source, Yahoo's unofficial chart endpoint, is the only free, keyless source found that covers both markets (F2). It is unofficial: it can break or refuse requests without notice, and has done so in waves (F3, F11).
 - The default source takes one request per ticker (F3). A refresh of 20 tickers and 3 summary entries is 23 requests.
-- One answer from the default source carries everything a row needs, including the intraday series, the day's trading period and the exchange's time zone (F13, F14). Whether the trading period is right on a market holiday is unverified (F14).
+- One answer from the default source carries everything a row needs, including the intraday series, the day's trading period and the exchange's time zone (F13, F14). On a US holiday the trading period in the answer is still the last session's, all day; it moves to the next session overnight (F43). An early close is in the answer hours ahead (F44).
+- Since November 2026 B3 trades until 18:00 São Paulo time, an hour after the end of the trading period the default source reports; B3's closing price reaches the source up to 92 minutes after that reported end (F45, F46).
 - The default source labels FIIs, ETFs and BDRs all as plain equity (F3).
 - Sources write B3 tickers in their own ways (a suffix, a prefix, or plain) (F22). The user writes none of them (D17).
 - The config folder reaches `~/.config` as a link to a whole folder of a public repository (F16, F17). Anything the tool wrote there would be published.
@@ -169,10 +170,10 @@ External facts that shape behaviour and that nobody chose.
 |---|---|---|---|---|
 | Unknown | The first quote of a ticker of this market arrives | Open or Closed | The market is shown as open or closed from then on | D15 |
 | Open | A refresh interval passes | Open | The market's rows are refreshed | D14 |
-| Open | The session ends | Closing | The market is shown as closed; its rows are still refreshed | D50 |
-| Closing | The closing quote has arrived for every row, or 30 minutes have passed since the close | Closed | Automatic refresh of the market's rows stops; rows show the last close | D15, D50 |
+| Open | The end of the trading period in the source's answer passes | Closing | The market is shown as closed; its rows are still refreshed | D50, D111 |
+| Closing | The settle time has passed since that end: 100 minutes for B3, 5 minutes for the other markets | Closed | Automatic refresh of the market's rows stops; rows show the last close | D15, D50, D111, D113 |
 | Closed | The next session starts | Open | Automatic refresh resumes without user action | D14, D15 |
-| Closed | A weekday comes on which the market does not trade (holiday) | Closed | The market stays closed and is not refreshed | D15, F14 [unverified] |
+| Closed | The market's usual open comes on a weekday, and the source's answer then, and once more 5 minutes later, still carries the last session (holiday) | Closed | The market stays closed; its rows are not checked again until the next weekday's usual open. A holiday costs at most two requests per row | D15, D112, F43 |
 
 ### 6.2 Row
 
@@ -515,16 +516,21 @@ As the user, I want quotes refreshed by themselves while a market is open and le
 
 - **S5.1** [view] Given B3 is open and no `refresh_seconds` is set, when the view stays open for 10 minutes, then each B3 row is requested from the source between 9 and 11 times. (D14, D50)
 - **S5.2** [view] Given `refresh_seconds = 120` and an open market, when the view stays open for 10 minutes, then each row of that market is requested between 4 and 6 times. (D14, D42, D50)
-- **S5.3** [view] Given the US market has been closed for more than 30 minutes and every US row has a quote, when the view stays open for 10 minutes, then no US row is requested. (D15, D50)
+- **S5.3** [view] Given the US trading period ended more than 5 minutes ago and every US row has a quote, when the view stays open for 10 minutes, then no US row is requested. (D15, D50, D111, D113)
 - **S5.4** [view, print] Given the US market is closed, when the view is drawn, then US rows show the last close. (D15)
 - **S5.5** [view, print] Given the US market is closed and B3 is open, when the view is drawn, then the status line reads `B3 open · US closed`. (D15, D47)
 - **S5.6** [view, print] Given a closed market whose rows were last fetched, with success, two days ago, when the view is drawn, then those rows carry no stale mark. (D40)
 - **S5.7** [view] Given a closed market and an open view, when the market's next session starts, then its rows are requested within one refresh interval without a key press. (D14, D15, D50)
-- **S5.8** [view] Given B3 closed less than 30 minutes ago and a B3 row whose quote time is before the close, when a refresh interval passes, then that row is requested again. (D50)
-- **S5.9** [view, print] Given a weekday that is a holiday for a market, when the view is open during that market's usual hours, then the market is shown as closed. (D15; rests on F14, unverified, see section 12)
+- **S5.8** [view] Given B3's trading period ended less than 100 minutes ago, when a refresh interval passes, then each B3 row is requested again. (D50, D111)
+- **S5.9** [view, print] Given a weekday that is a holiday for a market, so that the source's answer at the market's usual open still carries the last session, when the view is open during that market's usual hours, then the market is shown as closed. (D15, D112, F43)
 - **S5.10** [view, print] Given `refresh_seconds = 3`, when the view runs, then rows are requested no more often than every 10 seconds. (D50)
 - **S5.11** [view, print] Given the US market before its regular session, when the view is drawn, then US rows show the last regular close, not a pre-market price. (D50)
 - **S5.12** [view, print] Given a row whose last fetch failed before its market closed, when the view is drawn after the close, then the row is still marked stale. (D40)
+- **S5.13** [view] Given B3's trading period ended more than 100 minutes ago and every B3 row has a quote, when the view stays open for 10 minutes, then no B3 row is requested. (D15, D111)
+- **S5.14** [view] Given B3's trading period ended less than 100 minutes ago, when the view is drawn, then the status line shows B3 as closed. (D111)
+- **S5.15** [view] Given a weekday that is a holiday for a market, when the view stays open from before that market's usual open until its usual close, then each row of that market is requested at most twice. (D112)
+- **S5.16** [view] Given the source's answer at a market's usual open still carries the last session, and its answer 5 minutes later carries that day's session, when that second answer arrives, then the market is shown as open. (D112)
+- **S5.17** [view] Given a weekday that was a holiday for a market, when the view stays open until the next weekday's usual open, then that market's rows are requested within one refresh interval of that open. (D14, D112)
 
 ### S6 — When a refresh fails
 
@@ -657,7 +663,7 @@ As a script or the user at a prompt, I want the watchlist printed once, so that 
 - **S13.2** [print] Given an open market and a cache whose quotes were fetched at most 60 seconds ago, when `brl-stocks print` is run with the default interval, then no request is sent to the source. (D23)
 - **S13.3** [print] Given an open market and a cache whose quotes were fetched 5 minutes ago, when `brl-stocks print` is run, then the quotes are requested from the source before printing. (D23)
 - **S13.4** [print] Given an open market and a cache fetched 20 seconds ago, when `brl-stocks print --refresh` is run, then the quotes are requested from the source. (D23, D41)
-- **S13.5** [print] Given a market closed for more than 30 minutes, with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15, D50)
+- **S13.5** [print] Given a market whose trading period ended more than its settle time ago (6.1: 100 minutes for B3, 5 for the others), with cached quotes, when `brl-stocks print` is run, then none of that market's rows is requested. (D15, D50, D111)
 - **S13.6** [print] Given cached quotes, an open market and a source that cannot be reached, when `brl-stocks print` is run, then the cached quotes are printed, marked stale with their age. (D19)
 - **S13.7** [print] Given the output is piped to another program, when `brl-stocks print` is run, then the output contains no colour codes. (D25)
 - **S13.8** [print] Given a config with groups, when `brl-stocks print` is run, then each group's name is on a line of its own above its rows. (D16, D50)
@@ -784,11 +790,7 @@ Not requirements of this spec. Input for the design phase.
 
 ### Questions: technical choices the behaviour forces
 
-Answered by the design run; see `docs/design.md`. One remains:
-
-| Question | Must serve |
-|---|---|
-| Q62 — How are open, closed and holidays decided, how is the end of the period after the close recognised, and how many checks may a closed or holiday market cost? Waits on research (F14, F26, the closing-quote measurement) | 6.1, S5.3–S5.9, S13.5 |
+Answered by the design run; see `docs/design.md`. The last one, Q62 (open, close and holidays), was answered by D111–D113 after the research of F43–F47: a settle time per market and two checks at the usual open, with no market calendar.
 
 ## 11. Proposals
 
@@ -826,7 +828,7 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 | P28 | Waits: after a row's n-th failure in a row, its next automatic attempt is after interval × 2^(n−1), at most 30 minutes; after a refusal the wait is 5 minutes, doubling to at most 30; a success resets both. Waits and blocks hold for the view and for one-shot calls alike | 6.2, 6.3, 6.5, S6.4, S7.5, S13.16 | settled as D50 |
 | P29 | A refusal by the source (rate limit, access denied) is a block; every other failure (no connection, timeout, server error, unreadable answer) is a network error. Which answers the default source gives when it refuses is a fact to look up (section 12) | 6.3 | settled as D50 |
 | P30 | The error line gives cause, number of rows affected and time of the next attempt; it shows the first of config problem, block, failed fetches; not-found rows do not raise it. Warnings go to the status line (view) or the error stream (one-shot) | 7.2, 7.3, S6.9, S8.5, S11.18 | settled as D50 |
-| P31 | After a market closes, its rows are refreshed until the closing quote has arrived, for at most 30 minutes. This is an exception to D15, and is point C7 of the design run (Q38). The 30 minutes rest on a fact to measure (section 12) | 4, 6.1, S5.3, S5.8 | settled as D50 |
+| P31 | After a market closes, its rows are refreshed until the closing quote has arrived, for at most 30 minutes. This is an exception to D15, and is point C7 of the design run (Q38). The 30 minutes rest on a fact to measure (section 12) | 4, 6.1, S5.3, S5.8 | settled as D50; the 30 minutes changed to 100 by D111 |
 | P32 | A row with no quote is fetched even when its market may be closed (an exception to D15) | 6.5 | settled as D50 |
 | P33 | `r` and `--refresh` fetch rows of closed markets too (an exception to D15) and start within 2 seconds. They skip rows attempted less than 5 seconds ago, and `--refresh` obeys a block as `r` does (both limit the forced fetch of D23). Not-found rows keep their hourly wait (D39) | 6.3, 6.5, S7.1, S7.2, S7.6, S7.7, S13.10 | settled as D50 |
 | P34 | Summary entries show value and day change percent; indices without a currency symbol; USD/BRL with four decimals. Ibovespa follows B3's hours, S&P 500 the US hours, USD/BRL its own hours as the source reports them (what it reports is a fact to look up, section 12), S2.7 | 4, 6.1, 7.3, S2.1 | settled as D50 |
@@ -857,12 +859,11 @@ Additions of this spec that the log does not decide. Open ones are not requireme
 
 | Item | Affects | Blocks the design or the build? |
 |---|---|---|
-| Whether the trading period in the source's answer is right on a market holiday (F14, backlog; next check on US Thanksgiving, 2026-11-26) | 6.1, S5.9 | Design: no, but it needs a fallback. Build: S5.9 cannot pass until it is known |
-| Q62: how open, closed and holidays are decided, and what a closed or holiday market may cost in requests (log: waits on research) | 6.1, S5.3–S5.9; 6.1 says a holiday costs none | Build: yes, for the market-hours part only |
+| What the default source reports on a B3 holiday, and on a late open (F26); a US holiday is known (F43) | 6.1, S5.9 | No: D112 reads only whether the answer still carries the last session |
 | Which answers the default source gives when it rate-limits or refuses (F3 names one; an unknown ticker is told apart, F27; backlog) | D50, 6.3 | Build: yes, for the source part |
-| When B3's closing quote arrives after the close (backlog). A first sample shows it later than 30 minutes (F30) | D50, 6.1, S5.3, S5.8, S13.5 | Build: yes, for the market-hours part; the 30 minutes will be revisited in Q62 |
+| Whether B3's hours match the trading period the default source reports in the US summer (F45; next chance March 2027). If they do, B3's settle time of 100 minutes is longer than needed then | D111, 6.1 | No |
 | What the default source reports for USD/BRL at weekends; on a weekday it reports the whole day as its session (F29) | D50, 6.1 | No |
-| Whether the default source's price can include pre-market trades; after-hours trades do not move it (F28, one sample) | D50, S5.11 | No |
+| Neither pre-market (F44) nor after-hours trades (F28) move the default source's price; one sample each | D50, S5.11 | No |
 | Legal frame for showing and redistributing market data (backlog) | Publishing (D1, D24) | No; blocks publishing only |
 | Free-tier numbers of other US sources (F7, backlog) | A future second source | No |
 | B3 support in the closest existing tool was never tested (F9) | Nothing in this spec; D21 stands | No |
@@ -979,3 +980,6 @@ Every decision in the log, and where the spec realises it.
 | D108 | QR8, S15.3 |
 | D109 | 7.3, S10.20 |
 | D110 | 7.3, S10.23 |
+| D111 | 4, 5, 6.1, S5.3, S5.8, S5.13, S5.14, S13.5 |
+| D112 | 6.1, S5.9, S5.15–S5.17 |
+| D113 | 6.1, S5.3, 10, 12 |

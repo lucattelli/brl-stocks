@@ -1,11 +1,11 @@
 # brl-stocks (stock monitor TUI) — Design
 
-Status: approved, 2026-11-23 (D72), and updated on 2026-11-24 for D73. Earlier approvals: D63, D69. Open (section 7): Q62, and the protocol rules, which no critic attacked; the model proves six properties of them for two processes, and verification ran them in the built tool for the one-shot mode.
+Status: approved, 2026-11-23 (D72), and updated on 2026-11-24 for D73 and on 2026-11-27 for D111–D113 (rules 6 and 7 of `Plan`, `MarketState`, section 7). Earlier approvals: D63, D69. Open (section 7): the protocol rules, which no critic attacked; the model proves six properties of them for two processes, and verification ran them in the built tool for the one-shot mode.
 Sources: `research/grilling-log.md` (decisions D1–D74, facts F1–F32), `docs/spec.md`, design run in `research/design/`.
 
 This document says how the product is built. What it does is in the spec; this document changes nothing there. Every choice cites the decision that made it and what it serves.
 
-One thing is still open and is marked where it applies: the rules for close, open and holidays wait on research (Q62). The spec was updated for D60 and D62 on 2026-11-23.
+The rules for close, open and holidays, open until 2026-11-27 (Q62), follow D111–D113. The spec was updated for D60 and D62 on 2026-11-23.
 
 ## 1. Summary
 
@@ -105,8 +105,8 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 3. Forced: due.
 4. After failures: not due until the last attempt plus interval × 2^(failures−1), at most 30 minutes (D50).
 5. No quote: due, whatever the market (D50).
-6. The market is open: due when the last success is more than one interval old (D14, D23). A market counts as open from its expected next session too (the same hours on the next weekday, from the last session the source reported), so a closed market's rows are due again when that session starts without a quote having reported it (6.1, S5.7; recorded 2026-11-25 from slice 3's first build; holidays wait on Q62).
-7. After the close, before the next open, on a holiday: **provisional, waits on Q62** (see section 7).
+6. The market is open: due when the last success is more than one interval old (D14, D23). A market counts as open from its expected next session too (the same hours on the next weekday, from the last session the source reported), so a closed market's rows are due again when that session starts without a quote having reported it (6.1, S5.7; recorded 2026-11-25 from slice 3's first build). That expected session no longer counts once a row of the market has been fetched with success since it started and its answer still carries the last session: the day may be a holiday (D112).
+7. After the end of the trading period the source reports: due when the last success is more than one interval old, for a settle time of 100 minutes for B3 and 5 for the other markets (D111, D113). Then, at the expected next open (rule 6), due once if not attempted since that open, and once more if not attempted since 5 minutes after it; no other check until the next weekday's expected open (D112). A holiday therefore costs at most two requests per row.
 8. Otherwise not due (D15).
 
 **`Classify`**, in this order: not found; no data (no quote); stale (the last fetch failed, or the market is open and the last success is older than two intervals, D40); fresh.
@@ -270,8 +270,7 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 
 | Item | What would show it is wrong | What changes if it is |
 |---|---|---|
-| **Close, open and holidays (Q62, open).** The provisional rule: refresh for a settle window after the close (30 minutes for B3, 5 for the others); check again at the predicted next open, and every 5 minutes for 30 minutes if the answer still carries the old session. It rests on F14 and costs up to 7 requests per row on a holiday, where spec 6.1 says none | The holiday check on 2026-11-26; a measurement of when B3's closing quote arrives; a day with a late opening (F26) | Rule 7 of `Plan`, `MarketState`, and possibly the spec's 6.1 |
-| **The settle window is too short for B3 (F30).** On 2026-11-23 the quote time of a B3 ticker was 65 minutes past the session end the source reports | A watch of one B3 ticker from 19:30 to 21:45 UTC on a trading day | The settle window in rule 7 and the 30 minutes of D50 (P31), through Q62 |
+| **Close, open and holidays (D111–D113).** B3's settle time of 100 minutes covers the closing price, which arrived 80–92 minutes after the reported end on 2026-11-26 (F46), with 8 minutes to spare; one evening was measured. A holiday is read from an answer that still carries the last session at the usual open, measured on a US holiday only (F43) | A B3 closing price later than 100 minutes after the reported end; a B3 holiday whose answer carries a new session; a late open (F26) that the reported start misses | The settle time in rule 7; rules 6 and 7 of `Plan` and `MarketState` |
 | The rules of "The refresh protocol in detail" were written after the last attack round and were not attacked by a critic. The Quint model checks six properties of them: exhaustively for every run of up to 19 steps with two processes, without a violation; the complete state space and three processes are not yet covered | Tests with two and three processes against a counting stand-in source: a process killed between claim and commit, stopped inside the lock, refused while others hold claims. The model run to completion | `engine.Cycle` |
 | **Two watchlists at once are not supported (D68, accepted).** With one shared cache, two `print` loops on different configs prune each other's rows at every commit and refetch them at every call: up to about 3,300 requests in ten minutes for 23 entries (F31). Nothing in the tool prevents it | A block by the source while two configs are in use | A cache per config file, or a way to print one group, would remove it; neither is designed |
 | A process killed between receiving a refusal and writing it, twice in a row, lets a second and third round start: up to 8 requests each, above QR5's 10 | Not testable short of fault injection | Accepted; the window is the few milliseconds of one write |
@@ -287,5 +286,5 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 - Windows (D59).
 - Two different watchlists running at the same time: one shared cache, one watchlist at a time (D61, D68).
 - A step layer for the view (D57); alerts, a detail view, in-app editing and a portfolio, which were its reasons (D3, D12, D13).
-- A market calendar (D15 is met from the data fetched; see Q62).
+- A market calendar (D15 is met from the data fetched; D112 rejected a built-in holiday calendar).
 - Wiring into `the-2026-dev-env` and the install step, which are delivery work (D34, D36).
