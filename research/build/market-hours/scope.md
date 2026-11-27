@@ -9,7 +9,7 @@ Written 2026-11-27 from D111–D113 and the spec as updated for them. Q62 was th
 
 ## The criteria
 
-13 criteria, in one increment.
+10 criteria, in one increment.
 
 - **New** (D111, D112): S5.13–S5.17.
 - **Reworded** (D111–D113); their tests from slices 2 and 3 change to the new numbers: S5.3 (US, 5 minutes), S5.8 (B3, 100 minutes, every row), S13.5 (the settle time of 6.1).
