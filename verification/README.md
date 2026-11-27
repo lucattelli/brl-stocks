@@ -425,3 +425,28 @@ config padded to 20 tickers and the default 3 summary entries.
 - **S15.1 with a real network outage**: "no network" is a stopped stand-in.
 - **S17.1 / QR10** (the real source) for the view: as the QR10 hand check
   above, with `brl-stocks` in place of `print`, on a terminal.
+
+### Increment 2: summary line, groups and order (`view_increment2_verify_test.go`)
+
+The 12 criteria of increment 2 in `research/build/full-screen-view/scope.md`,
+on the real view with the helpers above (`openSettled` opens the view, waits
+for every row with a price and a settled screen, and quits with `q`). Run of
+2026-11-25: the ordinary run of all files, about 1 min 45 s; 124 top-level
+checks pass, 0 fail, 6 skipped; the 7 new checks and the 12 criteria pass.
+"QR1" as above.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S2.1 | `TestVerifyView_S2_1_5_8_DefaultSummaryLine/S2_1` | No `summary` key; the first line with text is above the column header and holds `IBOV`, `S&P 500` and `USD/BRL`, each with a value and a percent |
+| S2.5 to S2.8 | `TestVerifyView_S2_1_5_8_DefaultSummaryLine/S2_5` ... `/S2_8` | Stand-in: ^BVSP 158432.10 (+0.32 %), ^GSPC 6812.40, BRL=X 5.4321. Observed `IBOV 158.432 +0,32%    S&P 500 6,812.40 -0.11%    USD/BRL 5,4321 +0,08%` |
+| S2.2 | `TestVerifyView_S2_2_SummaryOnlyUSDBRL` | The first line is the USD/BRL entry alone; `IBOV` and `S&P 500` nowhere on the screen |
+| S2.3 | `TestVerifyView_S2_3_EmptySummaryNoLine` | None of the three labels on the screen; the column header is the first line with text |
+| S4.1 | `TestVerifyView_S4_1_3_S9_1_GroupsAndOrder/*/S4_1`, `TestVerifyView_S4_1_GroupOrderFollowsFile` | Brasil then US, and US then Brasil, as in the file; each row between its header and the next. QR1 (fillers go into the last group) |
+| S4.2 | `TestVerifyView_S4_2_NoGroupNoHeader` | Every line between the column header and the status line is a row. QR1 |
+| S4.3 | `TestVerifyView_S4_1_3_S9_1_GroupsAndOrder/*/S4_3` | The top-level rows are the first lines below the column header. QR1 |
+| S4.4 | `TestVerifyView_S4_4_TickerInTwoGroupsFetchedOnce` | "A refresh" in this slice is the view's fetch at start (empty cache): exactly 1 request for `PETR4.SA`; PETR4 shown in both groups (7.2). The refreshes of slice 3 are not covered. QR1 |
+| S9.1 | `TestVerifyView_S4_1_3_S9_1_GroupsAndOrder/*/S9_1` | File order chosen to differ from both other sort orders; status line `sort: file order`. QR1 |
+
+Not verified from outside, for these: how the summary line and group headers
+look on a real terminal; the hand check above shows them (its config has a
+group).
