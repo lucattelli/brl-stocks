@@ -702,3 +702,45 @@ the stand-in and the view of the hand check above, run
 error line `source is rate-limiting: ... · next attempt HH:MM` appear at the
 next refresh, then `curl -X POST -d '{}' http://127.0.0.1:18765/_control` and
 watch the line go at that HH:MM (5 minutes later) with no key pressed.
+
+## Live refresh, slice 3 increment 3: `r` (`refresh_increment3_verify_test.go`)
+
+The 8 criteria of increment 3 in `research/build/live-refresh/scope.md`
+(S7.1, S7.2, S7.3, S7.4, S7.6, S7.7, S7.8, S7.9) on the real view in real
+time, and outside the criteria `r` pressed ten times fast, held down, and
+during a heartbeat refresh that is still running. `r` is a real byte on the
+pseudo-terminal; it is pressed more than 5 s after the last attempt of the
+rows it should fetch (the 5-second guard of 6.5). The default interval (60 s)
+is used where the heartbeat must not be the cause of a request. Run of 2026-11-25 (evidence `20261125T184812Z`): the ordinary run of all files, 6 min 15 s; 179 top-level checks pass, 0 fail, 18 skipped (SLOW and LONG); the 8 new checks and the 8 criteria pass; this file alone runs in about 40 s.
+
+```sh
+# only these checks (about 40 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S7_[1-9]_R|S7_3_4|S7_9|R_During)' -v
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S7.1 | `TestVerifyView_S7_1_RRequestsB3Within2s` | Default interval; `r` at +7 s; from the key's write to the arrival at the stand-in. 2026-11-25: 3 to 7 ms |
+| S7.2 | `TestVerifyView_S7_2_RDuringWaitAfterFailure` | Scaled: one failure (503 at the fetch at start) puts the next attempt one minute away (error line `... · next attempt HH:MM`), not four; the source then answers; `r` at +7 s. 2026-11-25: every failed row 3 to 4 ms after `r` |
+| S7.3, S7.4 | `TestVerifyView_S7_3_4_RDuringBlock/{429,403}/S7_3`, `/S7_4` | Refusal at the fetch at start; `r` at +7 s and +9 s; 5 s watched. No request; status line `B3 unknown · US unknown · next attempt 18:50 · sort: file order` (5 min after the refusal), before and after `r` |
+| S7.6 | `TestVerifyView_S7_6_RRequestsClosedMarket` | US closed 2 h ago, cache left by `print`; AAPL and MSFT not requested at start, then 1 ms after `r` |
+| S7.7 | `TestVerifyView_S7_7_RTwice/twice_2s/S7_7` | `r` at +7 s and +9 s: one request per row |
+| S7.8 | `TestVerifyView_S7_8_RSkipsNotFound` | Scaled: XXXX9 (404) tried 7 s before `r`, not ten minutes; not requested after `r`, the other rows are |
+| S7.9 | `TestVerifyView_S7_9_TwentyB3RowsBeforeInterval` | 20 B3 tickers, every answer after 900 ms, default interval: every row requested before 60 s. 2026-11-25: the last 1.8 s after `r` |
+
+| Outside the criteria | Check | Note |
+|---|---|---|
+| `r` ten times 50 ms apart; held (30 times, 30 ms apart) | `TestVerifyView_S7_7_RTwice/ten_fast_50ms`, `/held_30x30ms` | Asserted as S7.7's rule: one request per row. 2026-11-25: one each |
+| `r` during a running heartbeat refresh | `TestVerifyView_R_DuringRunningHeartbeat/{with_r_5s,control_no_r_5s,with_r_4s}` | Interval 10 s; `r` 0.5 s after the heartbeat's first request arrived. Asserted only that no row is stale 25 s after the heartbeat started. See below |
+
+Recorded outside the criteria: (1) A heartbeat request answered after 5 s fails in the view: in two runs with `r` and one without, every held request was given up at 5.0 s (the stand-in recorded the client gone, or wrote 200 to a closed connection), the rows turned stale (`!16s`) and the error line read `source unreachable: 5 rows not updated · next attempt HH:MM`; the next attempt, one interval after the failure, recovered them. With answers after 4 s they were taken. So the view gives a request about 5 s; the spec names no limit for the view (QR11 measures with a source that answers after 5 s, which the view treats as a failure). (2) `r` 0.5 s into a running heartbeat refresh sends nothing and changes nothing on screen: no ticker was requested twice, with 4 s or 5 s answers. (3) During a block the status line reads `B3 unknown · US unknown · next attempt HH:MM · sort: file order` before `r` too, and the error line also gives the time. (4) With 20 B3 rows answering after 900 ms, the requests after `r` were spread over 1.8 s (not all at once).
+
+Not verified from outside, for these: S7.2's four-minute wait (scaled to one
+minute; four minutes need three failures at the default interval); S7.8's ten
+minutes (scaled to 7 s); how `r` looks on a real terminal (nothing on screen
+changes when `r` starts a refresh). Hand check: in the view of the hand check
+above (default interval), press `r` and watch
+`curl -s http://127.0.0.1:18765/_requests | grep -c PETR4` grow by one; press
+`r` again at once: it does not grow; switch the stand-in to
+`{"status":429}`, wait for the error line, press `r`: the count stays and the
+status line shows `next attempt HH:MM`.
