@@ -17,7 +17,7 @@ type Deps struct {
 	LookupEnv func(string) (string, bool)          // HOME, XDG_CONFIG_HOME, XDG_CACHE_HOME, NO_COLOR
 	Stdout    io.Writer
 	Stderr    io.Writer
-	IsTTY     bool // whether Stdout is a terminal
+	IsTTY     bool      // whether Stdout is a terminal
 	Terminal  *Terminal // where the full-screen view runs; nil: the process's own terminal
 }
 
@@ -59,5 +59,5 @@ type Frame struct {
 	// at all when NO_COLOR is set.
 	Lines  []string
 	Inputs int  // the number of inputs handled so far
-	Idle   bool // every command still running waits on the source or the timer
+	Idle   bool // nothing is running except waits on After; a request to the source in flight is not idle
 }

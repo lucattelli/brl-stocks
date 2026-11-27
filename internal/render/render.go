@@ -140,12 +140,27 @@ func (v View) summaryLine() string {
 	return strings.Join(parts, "    ")
 }
 
-// Table writes the one-shot table (spec 7.4).
-func Table(w io.Writer, v View) {
+// SummaryLine is the line of summary entries (spec 7.3, 7.4), or "" when
+// the config hides it.
+func SummaryLine(v View) string {
+	if len(v.Cfg.Summary) == 0 {
+		return ""
+	}
+	return v.summaryLine()
+}
+
+// MarketLine gives the state of each market: the last line of the table and
+// the start of the view's status line (D47, D74).
+func MarketLine(v View) string { return v.marketLine() }
+
+// Lines are the column header and the rows under their group names, aligned
+// as one table (D18, D71). The change value and percent are coloured when
+// v.Colour is set. Both surfaces draw their rows with it.
+func Lines(v View) []string {
 	header := []string{"TICKER", "NAME", "LAST", "CHANGE", "", "LOW", "HIGH", "TIME"}
 	rightAligned := []bool{false, false, true, true, true, true, true, false}
 	type line struct {
-		cells []string // nil: a group name or a blank line, in text
+		cells []string // nil: a group name, in text
 		text  string
 		in    market.Instrument
 	}
@@ -166,13 +181,10 @@ func Table(w io.Writer, v View) {
 			}
 		}
 	}
-	if len(v.Cfg.Summary) > 0 {
-		fmt.Fprintln(w, v.summaryLine())
-		fmt.Fprintln(w)
-	}
+	out := make([]string, 0, len(lines))
 	for _, l := range lines {
 		if l.cells == nil {
-			fmt.Fprintln(w, l.text)
+			out = append(out, l.text)
 			continue
 		}
 		var b strings.Builder
@@ -192,7 +204,19 @@ func Table(w io.Writer, v View) {
 				b.WriteString(c + pad)
 			}
 		}
-		fmt.Fprintln(w, strings.TrimRight(b.String(), " "))
+		out = append(out, strings.TrimRight(b.String(), " "))
+	}
+	return out
+}
+
+// Table writes the one-shot table (spec 7.4).
+func Table(w io.Writer, v View) {
+	if s := SummaryLine(v); s != "" {
+		fmt.Fprintln(w, s)
+		fmt.Fprintln(w)
+	}
+	for _, l := range Lines(v) {
+		fmt.Fprintln(w, l)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, v.marketLine())

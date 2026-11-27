@@ -98,8 +98,7 @@ func Run(ctx context.Context, args []string, d deps.Deps) int {
 		fmt.Fprintln(d.Stdout, "brl-stocks", Version)
 		return exitOK
 	case o.command != "print":
-		fmt.Fprintln(d.Stderr, "brl-stocks: the full-screen view is not built yet; use `brl-stocks print`")
-		return exitNotBuilt
+		return runView(ctx, o, d)
 	}
 	return runPrint(ctx, o, d)
 }
