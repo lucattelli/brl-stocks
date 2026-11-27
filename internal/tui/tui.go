@@ -53,9 +53,10 @@ type Model struct {
 	// unwritable: the cache folder could not be written at the last cycle
 	unwritable bool
 	sort       render.Sort
-	top        int  // the first line of the list on screen
-	help       bool // the list of keys is shown
-	busy       bool // a cycle is running
+	top        int         // the first line of the list on screen
+	help       bool        // the list of keys is shown
+	busy       bool        // a cycle is running
+	stamp      cache.Stamp // of the files when the view last read them
 }
 
 // New makes the model of a view about to open.
@@ -75,8 +76,14 @@ type (
 	}
 	// cycleDone carries the result of a refresh.
 	cycleDone struct{ res engine.Result }
-	// beat is one heartbeat.
-	beat struct{}
+	// diskRead is one heartbeat: what it found on disk: the files' stamp, and
+	// their content when the stamp changed (changed is then true).
+	diskRead struct {
+		stamp   cache.Stamp
+		changed bool
+		snap    market.Snapshot
+		health  market.Health
+	}
 )
 
 // Init reads the cache; its rows are shown before anything is fetched (D20,
@@ -94,7 +101,22 @@ func (m Model) tick() tea.Cmd {
 	if m.o.Tick == nil {
 		return nil
 	}
-	return m.o.Tick(Heartbeat, func(time.Time) tea.Msg { return beat{} })
+	read := m.readDisk()
+	return m.o.Tick(Heartbeat, func(time.Time) tea.Msg { return read() })
+}
+
+// readDisk stats the cache files and reads them again only when they
+// changed since the view last read them. It runs when the heartbeat's wait
+// ends, outside Update.
+func (m Model) readDisk() tea.Cmd {
+	files, name, seen := m.o.Engine.C, m.o.Engine.P.Name(), m.stamp
+	return func() tea.Msg {
+		st := files.Stamp()
+		if st == seen {
+			return diskRead{stamp: st}
+		}
+		return diskRead{stamp: st, changed: true, snap: files.Load(), health: files.LoadSource(name)}
+	}
 }
 
 // due asks Plan, on what the view holds, whether anything is due now: the
@@ -140,7 +162,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.health = msg.health
 		m.busy = true
 		return m, m.cycle()
-	case beat:
+	case diskRead:
+		if msg.changed {
+			// What other processes fetched (C4): merged, never replacing a
+			// quote with nothing; the block record only by a later one
+			// (protocol rule 5).
+			m.stamp = msg.stamp
+			m.snap = merge(m.snap, msg.snap)
+			if h := msg.health; h.UpdatedAt.After(m.health.UpdatedAt) ||
+				(h.UpdatedAt.Equal(m.health.UpdatedAt) && h.Gen > m.health.Gen) {
+				m.health = h
+			}
+		}
 		next := m.tick()
 		if m.busy || !m.due() {
 			return m, next
@@ -275,6 +308,11 @@ func (m Model) clampTop() int {
 		return m.top
 	}
 	head, list, foot := m.layout()
+	return m.clampIn(head, list, foot)
+}
+
+// clampIn is clampTop on a layout already made.
+func (m Model) clampIn(head, list, foot []string) int {
 	top, most := m.top, len(list)-m.room(head, foot)
 	if top > most {
 		top = most
@@ -293,7 +331,7 @@ func (m Model) View() tea.View {
 	var lines []string
 	if m.height > 0 {
 		if !m.help {
-			top := m.clampTop()
+			top := m.clampIn(head, list, foot)
 			list = list[top:]
 		}
 		if r := m.room(head, foot); len(list) > r {

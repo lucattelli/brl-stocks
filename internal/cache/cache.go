@@ -53,6 +53,25 @@ func (f Files) LoadSource(name string) market.Health {
 	return s.Sources[name]
 }
 
+// Stamp tells whether the two files changed: their modification times and
+// sizes. A missing file has the zero value.
+type Stamp struct {
+	QuotesMod, SourceMod   time.Time
+	QuotesSize, SourceSize int64
+}
+
+// Stamp reads the stamp of the two files, with two stat calls (design C1).
+func (f Files) Stamp() Stamp {
+	var st Stamp
+	if fi, err := os.Stat(filepath.Join(f.Dir, quotesName)); err == nil {
+		st.QuotesMod, st.QuotesSize = fi.ModTime(), fi.Size()
+	}
+	if fi, err := os.Stat(filepath.Join(f.Dir, sourceName)); err == nil {
+		st.SourceMod, st.SourceSize = fi.ModTime(), fi.Size()
+	}
+	return st
+}
+
 // ErrBusy means the lock was not obtained within its short wait.
 var ErrBusy = errors.New("another process holds the lock")
 

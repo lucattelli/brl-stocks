@@ -26,8 +26,10 @@ jobs:
         run: mise exec -- go vet ./... && mise exec -- go vet -tags verification ./verification/
       - name: acceptance tests
         run: mise exec -- go test ./... -race -count=1
+      # The ordinary checks run the real view in real time (slice 3): about
+      # 6 minutes on a developer's machine, longer on a hosted runner.
       - name: verification (ordinary checks)
-        run: mise exec -- go test -tags verification ./verification/ -count=1 -timeout 10m
+        run: mise exec -- go test -tags verification ./verification/ -count=1 -timeout 20m
       - name: keep the evidence
         if: always()
         uses: actions/upload-artifact@v4
