@@ -256,18 +256,19 @@ func TestVerifySlow_View_S5_2_Interval120TenMinutes(t *testing.T) {
 // S5.3, S5.4, S5.5: a market closed long ago stays unrequested
 // ---------------------------------------------------------------------------
 
-// S5.3 [view] Given the US market has been closed for more than 30 minutes and
+// S5.3 [view] Given the US trading period ended more than 5 minutes ago and
 // every US row has a quote, when the view stays open for 10 minutes, then no US
-// row is requested.
-// Scaled: 60 s (six intervals of 10 s). The US market closed 2 h ago; `print`
-// leaves a quote for every US row in the cache before the view opens. B3 is
-// open, as a control that time passed for the view.
+// row is requested. (Reworded by D111/D113: the settle time of the US is 5
+// minutes; before, "closed for more than 30 minutes".)
+// Scaled: 60 s (six intervals of 10 s). The US period ended 6 minutes before
+// each answer; `print` leaves a quote for every US row in the cache before the
+// view opens. B3 is open, as a control that time passed for the view.
 // Shown again after that minute with the view open: S5.4 (US rows show the
 // last close) and S5.5 (status line `B3 open · US closed`).
 func TestVerifyView_S5_3_ClosedMarketNotRequested(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t, "S5.3 scaled (60 s); S5.4, S5.5 with the view open", baseConfig)
-	e.setSource(state{ClosedMarkets: []string{"us"}}, "US closed 2 h ago")
+	e.setSource(state{ClosedMarkets: []string{"us"}, ClosedAgoSeconds: 360}, "US period ended 6 min before each answer")
 	r0 := e.run("print")
 	e.wantExit(r0, 0)
 	e.wantRequested(r0, []string{"AAPL", "MSFT"}, "set-up: print leaves a quote for every US row")
@@ -373,42 +374,32 @@ func TestVerifyView_S5_7_NextSessionStarts(t *testing.T) {
 // S5.8: the period after the close
 // ---------------------------------------------------------------------------
 
-// S5.8 [view] Given B3 closed less than 30 minutes ago and a B3 row whose quote
-// time is before the close, when a refresh interval passes, then that row is
-// requested again.
-// The stand-in's B3 closed 60 s before each answer; its quote time is 10
-// minutes before the close (`quote_before_close_seconds`). Empty cache,
-// interval 10 s, the view open 25 s.
-// Outside the criterion (Q62: what counts as the closing quote is open): the
-// same with the quote time at the close is logged as an observation.
+// S5.8 [view] Given B3's trading period ended less than 100 minutes ago, when
+// a refresh interval passes, then each B3 row is requested again. (Reworded
+// by D111: the settle time of B3 is 100 minutes; before, "closed less than 30
+// minutes ago and a quote time before the close".)
+// The stand-in's B3 period ended 60 minutes, and in a second run 99 minutes,
+// before each answer; the quote time is at the close. Empty cache, interval
+// 10 s, the view open 25 s.
 func TestVerifyView_S5_8_RequestedAgainAfterClose(t *testing.T) {
 	t.Parallel()
 	for _, v := range []struct {
-		name   string
-		before int64
-	}{{"quote_before_close", 600}, {"observation_quote_at_close", 0}} {
+		name string
+		ago  int64
+	}{{"ended_60min_ago", 3600}, {"ended_99min_ago", 5940}} {
 		v := v
 		t.Run(v.name, func(t *testing.T) {
 			t.Parallel()
-			e := newEnv(t, "S5.8: B3 closed 60 s ago, quote time "+map[bool]string{true: "10 min before the close", false: "at the close (observation)"}[v.before > 0], baseConfig)
-			e.setSource3(state3{state: state{ClosedMarkets: []string{"b3"}, ClosedAgoSeconds: 60}, QuoteBeforeCloseSeconds: v.before},
-				"B3 closed 60 s ago")
+			e := newEnv(t, fmt.Sprintf("S5.8: B3's period ended %d min before each answer", v.ago/60), baseConfig)
+			e.setSource3(state3{state: state{ClosedMarkets: []string{"b3"}, ClosedAgoSeconds: v.ago}},
+				fmt.Sprintf("B3 period ended %d s ago", v.ago))
 			vw := e.openRows(tickers, nil)
 			vw.hold(vw.start.Add(25*time.Second), 5*time.Second, nil)
 			s := vw.snap()
 			vw.logScreen("SCREEN AFTER 25 s", s, nil)
 			r := vw.quit([]byte("q"), "q")
 			e.wantExit(result{exit: r.exit}, 0)
-			if v.before == 0 {
-				crit(e, "6.1 closing quote (observation)", "requests of B3 rows when the quote time is the close", func(c *ck) {
-					for _, sym := range []string{"PETR4.SA", "VALE3.SA", "ITUB4.SA"} {
-						c.notef("%s: %s", sym, fmtArrivals(arrivals(r.reqs, sym, vw.start, time.Now()), vw.start))
-					}
-					c.notef("status line %q", statusLine(s))
-				})
-				return
-			}
-			crit(e, "S5.8", "a B3 row whose quote is before the close is requested again after one interval", func(c *ck) {
+			crit(e, "S5.8", "within B3's settle time each B3 row is requested again after one interval", func(c *ck) {
 				if st := statusLine(s); !strings.HasPrefix(st, "B3 closed") {
 					c.failf("set-up: want B3 shown closed, status line %q", st)
 				}

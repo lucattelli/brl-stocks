@@ -77,6 +77,14 @@ type state struct {
 	// Series replaces the made-up intraday series of single symbols. Added for
 	// the sparkline (S10): exact prices, gaps, and prices outside the session.
 	Series map[string]seriesSpec `json:"series"`
+	// PeriodFromUnix, for a market in opens_at_unix: the answer carries the
+	// previous weekday's period until this time, although the session starts
+	// at opens_at_unix (a holiday when it never comes; a late answer when it
+	// comes minutes after the open). Added for Q62 (S5.9, S5.15, S5.16).
+	PeriodFromUnix map[string]int64 `json:"period_from_unix"`
+	// SessionSeconds, when not 0, is the length of the sessions made by
+	// opens_at_unix, in place of 7 hours. Added for S5.15 (to its usual close).
+	SessionSeconds int64 `json:"session_seconds"`
 }
 
 // seriesSpec is an intraday series as the source's answer carries it.
@@ -267,7 +275,15 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 	nowS := now.Unix()
 	var start, end, quoteTime int64
 	if at, ok := st.OpensAtUnix[marketOf(symbol)]; ok && at != 0 {
-		if nowS < at {
+		sess := int64(7 * 3600)
+		if st.SessionSeconds > 0 {
+			sess = st.SessionSeconds
+		}
+		from := at
+		if pf, ok := st.PeriodFromUnix[marketOf(symbol)]; ok && pf != 0 {
+			from = pf
+		}
+		if nowS < from {
 			loc, err := time.LoadLocation(q.TZ)
 			if err != nil {
 				loc = time.UTC
@@ -277,14 +293,17 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 				prev = prev.AddDate(0, 0, -1)
 			}
 			start = prev.Unix()
-			end = start + 7*3600
+			end = start + sess
 			quoteTime = end - st.QuoteBeforeCloseSeconds
 		} else {
 			start = at
-			end = at + 7*3600
+			end = at + sess
 			quoteTime = nowS - 30
 			if quoteTime < start {
 				quoteTime = start
+			}
+			if quoteTime > end {
+				quoteTime = end
 			}
 		}
 	} else if closed {

@@ -115,7 +115,7 @@ The build tag `verification` keeps these checks out of the ordinary
 | S13.2 | `TestVerifyS13_02_FreshCacheNoRequest` | Literal: default interval, cache 12 s old |
 | S13.3 | `TestVerifyS13_03_OldCacheIsRequested` | Scaled: interval 10 s, cache 12 s old in place of "5 minutes ago" |
 | S13.4 | `TestVerifyS13_04_RefreshForcesFetch` | Literal: default interval, cache 20 s old |
-| S13.5 | `TestVerifyS13_05_ClosedMarketNotRequested` | B3 closed 2 h ago; US open as a control; interval 10 s |
+| S13.5 | `TestVerifyS13_05_ClosedMarketNotRequested/{b3_ended_101min_ago,b3_ended_2h_ago,us_ended_6min_ago}` | Reworded by D111 (2026-11-27): past the settle time, 100 min for B3, 5 for the US. The period ends that long before every answer; the other market open as a control; interval 10 s. Before: B3 closed 2 h ago |
 | S13.6 | `TestVerifyS13_06_UnreachableShowsStaleWithAge` | Two variants: status 503, no connection. Scaled: interval 10 s |
 | S13.7 | `TestVerifyS13_07_PipedNoColour` | |
 | S13.8 | `TestVerifyS13_08_GroupNamesOnOwnLines` | |
@@ -201,8 +201,9 @@ The build tag `verification` keeps these checks out of the ordinary
   `script -qc "brl-stocks print" /dev/null | cat -v` against the stand-in and
   look for `^[[32m` on a gain and `^[[31m` on a loss, then the same with
   `NO_COLOR=1` and none. Done on 2026-11-24: as expected.
-- "Closed for more than 30 minutes" (S13.5) is tested with 2 hours. The period
-  right after the close (6.1) is not explored.
+- S13.5 (since D111) is tested just past the settle times (101 min for B3,
+  6 min for the US) and at 2 h; the settle time itself is in the view's checks
+  (S5.8, S5.14).
 - The end of the hourly wait of a not-found row (6.5 row 1) and waits longer than one
   interval after repeated failures (6.2): they need more real time.
 
@@ -623,10 +624,10 @@ BRL_VERIFY_LONG=1 mise exec -- go test -tags verification ./verification/ -run T
 |---|---|---|
 | S5.1 | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S5_1`; literal: `TestVerifySlow_View_S5_1_DefaultIntervalTenMinutes` (SLOW) | Scaled: `refresh_seconds = 10` for 100 s (ten intervals, as 10 min are ten default intervals), so "no `refresh_seconds`" is only in the SLOW check, not run yet. Empty cache; the fetch at start counts. 2026-11-25: 10 each for PETR4 and VALE3 (+0 s, +10.01 s ... +90.07 s) |
 | S5.2 | `TestVerifyView_S5_2_IntervalFromConfig`; literal: `TestVerifySlow_View_S5_2_Interval120TenMinutes` (SLOW) | Scaled: `refresh_seconds = 20` for 100 s (five intervals). 2026-11-25: 5 for every row (+0, +20 s ... +80 s) |
-| S5.3 | `TestVerifyView_S5_3_ClosedMarketNotRequested/S5_3` | Scaled: 60 s in place of 10 min. US closed 2 h ago; `print` leaves a quote for every US row first; B3 open as control. 2026-11-25: AAPL, MSFT and ^GSPC 0; control PETR4 5 |
+| S5.3 | `TestVerifyView_S5_3_ClosedMarketNotRequested/S5_3` | Reworded by D111/D113 (2026-11-27): the US period ended more than 5 min ago; the stand-in's ended 6 min before every answer (before: closed 2 h ago, for "more than 30 minutes"). Scaled: 60 s in place of 10 min; `print` leaves a quote for every US row first; B3 open as control. 2026-11-25: AAPL, MSFT and ^GSPC 0; control PETR4 5 |
 | S5.4, S5.5 (shown again) | `TestVerifyView_S5_3_ClosedMarketNotRequested/S5_4`, `/S5_5` | After 60 s open: US rows show the close, no stale mark; `B3 open · US closed` |
 | S5.7 | `TestVerifyView_S5_7_NextSessionStarts` | B3's session starts 25 s after the view opens (`opens_at_unix`); last session the previous weekday. Skipped on a weekend (São Paulo). 2026-11-25: every B3 row first requested 0.4 s after the start (0.85 s in an earlier run); status line `B3 closed` then `B3 open`; no B3 request while closed |
-| S5.8 | `TestVerifyView_S5_8_RequestedAgainAfterClose/quote_before_close/S5_8` | B3 closed 60 s before each answer, quote time 10 min before the close; the second request at most 11 s after the first. 2026-11-25: every B3 row at +0, +10 s, +20 s |
+| S5.8 | `TestVerifyView_S5_8_RequestedAgainAfterClose/{ended_60min_ago,ended_99min_ago}/S5_8` | Reworded by D111 (2026-11-27): B3's period ended less than 100 min ago; the stand-in's ended 60 and 99 min before every answer, quote time at the close (before: closed 60 s ago with a quote time 10 min before the close). The second request at most 11 s after the first. 2026-11-27: every B3 row at +0, +10 s, +20 s in both |
 | S5.10 | `TestVerifyView_S5_10_IntervalFloor` | `refresh_seconds = 3`, 60 s: the shortest gap between two arrivals of one symbol at least 10 s (50 ms allowed), at most 7 per symbol. 2026-11-25: 6 per symbol, shortest gap 10.004 s; status line `... · refresh_seconds is below 10; using 10` |
 | S8.3 | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S8_3` (partial); `TestVerifyLong_View_S8_3_NotFoundThreeHours` (LONG) | Partial: in 100 s, XXXX9 (404) is asked for once (at start), not on every interval. The hour itself only in the 3-hour LONG check, not run yet |
 | S4.4 (shown again) | `TestVerifyView_S5_1_S4_4_S8_3_Heartbeat/S4_4` | PETR4 at the top and in two groups: as many requests as VALE3 (±1), never two within 5 s; shown in its three places |
@@ -638,7 +639,7 @@ BRL_VERIFY_LONG=1 mise exec -- go test -tags verification ./verification/ -run T
 | QR11 | `TestVerifyView_QR11_KeysDuringHeartbeatRefresh/QR11`, `/QR11_answered` | The view opens on a healthy source; the stand-in then answers after 4 s (D100; was 5 s) with PETR4 at 12.34; when the first request of the next heartbeat refresh has arrived, `?`, `x`, `s`, `s` are pressed. `QR11_answered`: the held refresh is answered (its requests 200, PETR4 `R$ 12,34`, no stale row, no error line). Not parallel. 2026-11-25 with 5 s: 1 to 7 ms for each key; with 4 s: 8 to 17 ms, pressed 3 to 542 ms after the held request arrived, 8 requests in flight. Until the emulator, not a real terminal's paint |
 | QR8 (view) | `TestVerifyLong_View_QR8_S15_3_EightHours` (LONG) | Baseline as S15.3 (D108: full sparklines from the first refresh, unchanged). As S15.3, 8 h (`BRL_VERIFY_LONG_DURATION`) at 60 s; also asserts QR6 every minute. Not run yet |
 
-Recorded outside the criteria: with B3 closed 60 s ago and the quote time at the close (`TestVerifyView_S5_8_RequestedAgainAfterClose/observation_quote_at_close`), the B3 rows are still requested every interval: a quote at the close does not end the period after the close (6.1 "the closing quote has arrived"; what counts as the closing quote waits on Q62). The heartbeat drifts by about 7 ms per interval (+90.07 s after nine intervals of 10 s), so each next refresh is timed from the end of the last, not from a fixed schedule; at 60 s over 8 h that is about 3.5 s, within S5.1's range.
+Recorded outside the criteria (2026-11-25, before D111): with B3 closed 60 s ago and the quote time at the close, the B3 rows were still requested every interval; Q62 was then answered by D111 (a settle time, no closing quote), and that observation is now S5.8's check. The heartbeat drifts by about 7 ms per interval (+90.07 s after nine intervals of 10 s), so each next refresh is timed from the end of the last, not from a fixed schedule; at 60 s over 8 h that is about 3.5 s, within S5.1's range.
 
 Not verified from outside, for these: the view left open overnight on a real
 terminal, across a real close and open of the markets; the 3- and 8-hour
@@ -837,3 +838,43 @@ Not verified from outside, for these: how the blocks and colours look in the
 user's own terminal and font (a font without the eighth blocks would show
 boxes). Hand check: in the view of the hand check above, look at the `TODAY`
 column at full width, then narrow the window until it goes.
+
+## Close, open and holidays, Q62 increment 1 (`markethours_increment1_verify_test.go`)
+
+The criteria of increment 1 in `research/build/market-hours/scope.md` as
+reworded by D111 to D113 (S5.3, S5.8, S5.9, S5.11, S5.13 to S5.17, S13.5),
+through the real build on the real clock. Settle cases: the stand-in's
+trading period ends a chosen time before every answer (`closed_ago_seconds`).
+Holiday cases: the answer carries yesterday's period, at the hours of today's
+usual open placed a minute ahead (`opens_at_unix`), and keeps carrying it
+(`period_from_unix`, never, or until 4 min after the open). Added to the
+stand-in, without changing the existing controls: `period_from_unix` and
+`session_seconds` (the length of an `opens_at_unix` session, so that S5.15
+reaches the usual close in 10 minutes). A holiday check skips itself when
+the usual open is not a weekday (New York). The reworded S5.3, S5.8 and S13.5
+stay in their files (rows above). Run of 2026-11-27 (evidence `20261127T213605Z`): the ordinary run of all files, 7 min 33 s; 202 top-level checks pass, 0 fail, 20 skipped (SLOW and LONG); the SLOW checks of this file were run once the same day (evidence `20261127T212402Z`) and pass.
+
+```sh
+# the ordinary checks of this file (about 2 min 40 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S5_9_15|S5_11_Pre|S5_13_|S5_14_)' -v
+# S5.15 to the close, S5.16 and print across a holiday's open (about 12 min)
+BRL_VERIFY_SLOW=1 mise exec -- go test -tags verification ./verification/ -run 'TestVerifySlow_(View_S5_15_16|Print_HolidayEveryMinute)' -v -timeout 25m
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S5.9 | `TestVerifyView_S5_9_15_HolidayAtOpen/S5_9` | US holiday, usual open 60 s after the view opens; every status line from 5 s to 100 s after it: `B3 open · US closed · sort: file order` |
+| S5.11 | `TestVerifyView_S5_11_PreMarketShowsClose` | US session 30 min ahead; the answer's regular series ends at 229.87, with 235.00 and 236.50 after the last session's end: view and `print` show `US$ 229.87`; status `US closed` |
+| S5.13 | `TestVerifyView_S5_13_B3SettledNotRequested` | Scaled: 60 s in place of 10 min. B3's period ended 101 min before every answer; `print` leaves the cache; no B3 row (nor ^BVSP) requested; US control 5 |
+| S5.14 | `TestVerifyView_S5_14_ClosedDuringSettle/{ended_60s_ago,ended_3600s_ago,ended_5940s_ago}` | Status line `B3 closed · US open · sort: file order` throughout 25 s, while the B3 rows are still requested every 10 s |
+| S5.15 | `TestVerifyView_S5_9_15_HolidayAtOpen/S5_15` (partial: to 100 s after the open); `TestVerifySlow_View_S5_15_16/S5_15_to_the_close` (SLOW, a 10-minute session) | `print` leaves the cache first, so the view's start sends nothing. 2026-11-27: AAPL and MSFT at the open (+1 m 0 s) and 4 m 59 s later, nothing else until 30 s after the close |
+| S5.16 | `TestVerifySlow_View_S5_15_16/S5_16_late_session` (SLOW) | The answer carries today's session from 4 min after the open. 2026-11-27: the second look at +5 m 59.3 s (4 m 59 s after the first), `US open` on the next sample (+6 m 0 s), then every 10 s |
+| S5.17 | not verified | Needs the next weekday's usual open while the view stays open since the holiday: a day of real time. What would make it visible: a clock the stand-in and the tool share (the acceptance tests' boundary). Hand check: on a real US holiday, leave `brl-stocks` open overnight against the real source and see the US rows requested within a minute of the next day's open |
+
+Recorded outside the criteria: `print` called every minute across a
+holiday's usual open (`TestVerifySlow_Print_HolidayEveryMinute`, SLOW, run
+2026-11-27): the US rows were requested by the call 30 s after the open and
+by the call 5 m 30 s after it, and by no other call (two per row, as 6.1
+says); B3 (open) was fetched by every call. During the settle time the status
+line says only `B3 closed`: nothing tells the user that the rows are still
+being refreshed.
