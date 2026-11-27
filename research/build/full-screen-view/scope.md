@@ -21,6 +21,8 @@ Why the slice 3 ones are not here: each needs time to pass with the view open (a
 
 ## Increments
 
+All five built and verified on 2026-11-25 (F38): PRs #3 to #7.
+
 Grouped by D85: each reaches the edge (something on the screen changes), criteria with the same setup go together, the order follows what each needs from the one before, and each is one PR.
 
 | # | Increment | Criteria | Needs |
