@@ -24,6 +24,35 @@ type View struct {
 	Colour bool           // colour the day change: a terminal, and NO_COLOR not set (D25)
 	Sort   Sort           // the order of the rows inside each group; the table keeps file order
 	Width  int            // the screen's width, to drop columns from; 0: no limit (the table)
+
+	memo *memo // what one drawing computes once, not per row; set by prepared
+}
+
+// memo holds the wanted rows and the state of each market for one drawing.
+type memo struct {
+	want []market.Instrument
+	open map[market.Market][2]bool // open, known
+}
+
+// prepared returns v with its memo, made once per drawing.
+func (v View) prepared() View {
+	if v.memo == nil {
+		v.memo = &memo{want: v.Cfg.Want(), open: map[market.Market][2]bool{}}
+	}
+	return v
+}
+
+// marketOpen is market.MarketOpen for v, computed once per market.
+func (v View) marketOpen(m market.Market) (open, known bool) {
+	if v.memo == nil {
+		return market.MarketOpen(m, v.want(), v.Snap, v.Now)
+	}
+	if r, ok := v.memo.open[m]; ok {
+		return r[0], r[1]
+	}
+	open, known = market.MarketOpen(m, v.memo.want, v.Snap, v.Now)
+	v.memo.open[m] = [2]bool{open, known}
+	return open, known
 }
 
 // Sort is the order of the rows inside each group (D31, D50).
@@ -107,10 +136,15 @@ const dash = "—"
 var labels = map[string]string{"IBOV": "IBOV", "SP500": "S&P 500", "USDBRL": "USD/BRL"}
 var names = map[string]string{"IBOV": "Ibovespa", "SP500": "S&P 500", "USDBRL": "USD/BRL"}
 
-func (v View) want() []market.Instrument { return v.Cfg.Want() }
+func (v View) want() []market.Instrument {
+	if v.memo != nil {
+		return v.memo.want
+	}
+	return v.Cfg.Want()
+}
 
 func (v View) state(in market.Instrument) (market.State, time.Duration) {
-	open, _ := market.MarketOpen(in.Hours(), v.want(), v.Snap, v.Now)
+	open, _ := v.marketOpen(in.Hours())
 	return market.Classify(v.Snap[in], open, v.Cfg.Interval, v.Now)
 }
 
@@ -154,7 +188,7 @@ func age(d time.Duration) string {
 // marketLine is the last line of the table: the state of each market (D47).
 func (v View) marketLine() string {
 	word := func(m market.Market) string {
-		open, known := market.MarketOpen(m, v.want(), v.Snap, v.Now)
+		open, known := v.marketOpen(m)
 		switch {
 		case !known:
 			return "unknown"
@@ -235,6 +269,7 @@ func (v View) summaryLine() string {
 // SummaryLine is the line of summary entries (spec 7.3, 7.4), or "" when
 // the config hides it.
 func SummaryLine(v View) string {
+	v = v.prepared()
 	if len(v.Cfg.Summary) == 0 {
 		return ""
 	}
@@ -243,12 +278,13 @@ func SummaryLine(v View) string {
 
 // MarketLine gives the state of each market: the last line of the table and
 // the start of the view's status line (D47, D74).
-func MarketLine(v View) string { return v.marketLine() }
+func MarketLine(v View) string { return v.prepared().marketLine() }
 
 // Lines are the column header and the rows under their group names, aligned
 // as one table (D18, D71). The change value and percent are coloured when
 // v.Colour is set. Both surfaces draw their rows with it.
 func Lines(v View) []string {
+	v = v.prepared()
 	header := []string{"TICKER", "NAME", "LAST", "CHANGE", "", "LOW", "HIGH", "TIME"}
 	rightAligned := []bool{false, false, true, true, true, true, true, false}
 	type line struct {
@@ -336,6 +372,7 @@ func Lines(v View) []string {
 
 // Table writes the one-shot table (spec 7.4).
 func Table(w io.Writer, v View) {
+	v = v.prepared()
 	if s := SummaryLine(v); s != "" {
 		fmt.Fprintln(w, s)
 		fmt.Fprintln(w)
@@ -381,6 +418,7 @@ func (v View) row(in market.Instrument) []string {
 // Cause gives the one line that says why rows were not updated, or "" when
 // nothing is wrong (D19, D38, D50, D71).
 func Cause(v View) string {
+	v = v.prepared()
 	want := v.want()
 	summary := map[market.Instrument]bool{}
 	for _, in := range v.Cfg.Summary {
@@ -483,7 +521,7 @@ type jsonRow struct {
 }
 
 func (v View) marketState(in market.Instrument) *string {
-	open, known := market.MarketOpen(in.Hours(), v.want(), v.Snap, v.Now)
+	open, known := v.marketOpen(in.Hours())
 	if !known {
 		return nil
 	}
@@ -497,6 +535,7 @@ func (v View) marketState(in market.Instrument) *string {
 // JSON writes the one-shot JSON document. Numbers are neither rounded nor
 // formatted (D66).
 func JSON(w io.Writer, v View) error {
+	v = v.prepared()
 	doc := document{SchemaVersion: 1, GeneratedAt: v.Now.UTC(), Summary: []jsonItem{}, Groups: []jsonGrp{}}
 	fresh, withQuote, failed, total := 0, 0, 0, 0
 	count := func(in market.Instrument) market.State {

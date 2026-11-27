@@ -63,6 +63,17 @@ type state struct {
 	// of every open market, in place of "four hours from now". Added for S5.12:
 	// a session that ends while the check runs.
 	OpenEndUnix int64 `json:"open_end_unix"`
+	// OpensAtUnix makes the session of a market ("b3", "us", "fx") start at a
+	// given time (Unix seconds). Before it, the market is closed and its last
+	// session is the same hours on the previous weekday in the exchange's time
+	// zone (7 hours long); from it on, the market is open with a session of 7
+	// hours from that time. Takes precedence over closed_markets. Added for
+	// S5.7: a market's next session starts while the view is open.
+	OpensAtUnix map[string]int64 `json:"opens_at_unix"`
+	// QuoteBeforeCloseSeconds, when not 0, puts the quote time of a market
+	// whose session is over that many seconds before its close, in place of at
+	// the close. Added for S5.8: a quote time before the close.
+	QuoteBeforeCloseSeconds int64 `json:"quote_before_close_seconds"`
 }
 
 // record is one request as the source saw it.
@@ -238,14 +249,35 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 	}
 	nowS := now.Unix()
 	var start, end, quoteTime int64
-	if closed {
+	if at, ok := st.OpensAtUnix[marketOf(symbol)]; ok && at != 0 {
+		if nowS < at {
+			loc, err := time.LoadLocation(q.TZ)
+			if err != nil {
+				loc = time.UTC
+			}
+			prev := time.Unix(at, 0).In(loc).AddDate(0, 0, -1)
+			for prev.Weekday() == time.Saturday || prev.Weekday() == time.Sunday {
+				prev = prev.AddDate(0, 0, -1)
+			}
+			start = prev.Unix()
+			end = start + 7*3600
+			quoteTime = end - st.QuoteBeforeCloseSeconds
+		} else {
+			start = at
+			end = at + 7*3600
+			quoteTime = nowS - 30
+			if quoteTime < start {
+				quoteTime = start
+			}
+		}
+	} else if closed {
 		ago := st.ClosedAgoSeconds
 		if ago <= 0 {
 			ago = 7200
 		}
 		end = nowS - ago
 		start = end - 8*3600
-		quoteTime = end
+		quoteTime = end - st.QuoteBeforeCloseSeconds
 	} else {
 		start = nowS - 2*3600
 		end = nowS + 4*3600
@@ -254,7 +286,7 @@ func (s *server) chart(w http.ResponseWriter, r *http.Request) {
 		}
 		quoteTime = nowS - 30
 		if quoteTime > end {
-			quoteTime = end // the session given by open_end_unix is over
+			quoteTime = end - st.QuoteBeforeCloseSeconds // the session given by open_end_unix is over
 		}
 	}
 

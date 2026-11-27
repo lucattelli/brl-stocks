@@ -42,6 +42,7 @@ Notes for the briefs:
 - Time passes only through the boundary's time step (design: the view's test boundary, "Time"). No test sleeps.
 - A config file saved while the view runs gets its modification time set to the view's clock by the test (design, same section), so "newer than the last attempt" is decided on one clock.
 - Open or closed comes from the trading period the stand-in source returns with each quote, and the view's clock, as in slice 2. The next session of a closed market is the same hours on the next weekday; holidays wait on Q62 (S5.9). S5.8 needs only a quote time before the close, not a recognised closing quote.
+- Increment 2's build also makes the view take in what other processes fetched (it re-reads the cache, design C4); increment 1 did not need it, and QR4 does.
 - The stand-in source reads the same clock as the view (`deps.Clock`) to stamp requests; it never waits on it, and answers at once (S7.9's "within one second" includes at once).
 - S15.3 runs eight hours of view time; its size is measured on the cache folder after the first full refresh and at the end.
 

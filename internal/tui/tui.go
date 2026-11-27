@@ -35,7 +35,13 @@ type Options struct {
 	Colour      bool // NO_COLOR is not set (D25)
 	Width       int  // the size when the view opens; 0 until the terminal says
 	Height      int
+	// Tick makes the command that waits d and then gives f's message: the
+	// view's own wait, behind the heartbeat. nil: no heartbeat.
+	Tick func(d time.Duration, f func(time.Time) tea.Msg) tea.Cmd
 }
+
+// Heartbeat is how often the view asks Plan what is due (design C1).
+const Heartbeat = time.Second
 
 // Model is the state of the view.
 type Model struct {
@@ -49,6 +55,7 @@ type Model struct {
 	sort       render.Sort
 	top        int  // the first line of the list on screen
 	help       bool // the list of keys is shown
+	busy       bool // a cycle is running
 }
 
 // New makes the model of a view about to open.
@@ -68,14 +75,36 @@ type (
 	}
 	// cycleDone carries the result of a refresh.
 	cycleDone struct{ res engine.Result }
+	// beat is one heartbeat.
+	beat struct{}
 )
 
-// Init reads the cache; its rows are shown before anything is fetched (D20, QR2).
+// Init reads the cache; its rows are shown before anything is fetched (D20,
+// QR2). The heartbeat starts with it.
 func (m Model) Init() tea.Cmd {
 	files, name := m.o.Engine.C, m.o.Engine.P.Name()
-	return func() tea.Msg {
+	load := func() tea.Msg {
 		return cacheLoaded{snap: files.Load(), health: files.LoadSource(name)}
 	}
+	return tea.Batch(load, m.tick())
+}
+
+// tick is the wait for the next heartbeat; nil without a heartbeat.
+func (m Model) tick() tea.Cmd {
+	if m.o.Tick == nil {
+		return nil
+	}
+	return m.o.Tick(Heartbeat, func(time.Time) tea.Msg { return beat{} })
+}
+
+// due asks Plan, on what the view holds, whether anything is due now: the
+// heartbeat starts a cycle only then (design C1).
+func (m Model) due() bool {
+	p := market.Plan(market.PlanInput{
+		Want: m.o.Cfg.Want(), Snap: m.snap, Health: m.health, Interval: m.o.Cfg.Interval,
+		Now: m.o.Now(), ConfigMTime: m.o.ConfigMTime,
+	})
+	return len(p.Due) > 0
 }
 
 // Update handles one message.
@@ -109,8 +138,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case cacheLoaded:
 		m.snap = merge(m.snap, msg.snap)
 		m.health = msg.health
+		m.busy = true
 		return m, m.cycle()
+	case beat:
+		next := m.tick()
+		if m.busy || !m.due() {
+			return m, next
+		}
+		m.busy = true
+		return m, tea.Batch(next, m.cycle())
 	case cycleDone:
+		m.busy = false
 		m.snap = merge(m.snap, msg.res.Snap)
 		m.health = msg.res.Health
 		if w := msg.res.Warn; w != nil && !errors.Is(w, cache.ErrBusy) {
