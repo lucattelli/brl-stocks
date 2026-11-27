@@ -38,6 +38,28 @@ type Options struct {
 	// Tick makes the command that waits d and then gives f's message: the
 	// view's own wait, behind the heartbeat. nil: no heartbeat.
 	Tick func(d time.Duration, f func(time.Time) tea.Msg) tea.Cmd
+	// ReadConfig looks at the config file at each heartbeat, outside
+	// Update; it reads and parses the file only when its stamp is not seen
+	// (spec 6.4, 7.2). nil: the config is not watched.
+	ReadConfig  func(seen ConfigStamp) ConfigRead
+	ConfigStamp ConfigStamp // of the file the view opened with
+}
+
+// ConfigStamp tells whether the config file changed: whether it exists, its
+// modification time and its size, through any symbolic link.
+type ConfigStamp struct {
+	Exists bool
+	Mod    time.Time
+	Size   int64
+}
+
+// ConfigRead is what a look at the config file found.
+type ConfigRead struct {
+	Stamp   ConfigStamp
+	Changed bool // the stamp differs from the one seen; the rest is set only then
+	Cfg     config.Config
+	Notes   []string // the config's warnings, already short (D95)
+	Problem string   // the error line when the file is invalid or gone; "" when Cfg holds
 }
 
 // Heartbeat is how often the view asks Plan what is due (design C1).
@@ -58,6 +80,7 @@ type Model struct {
 	busy       bool        // a cycle is running
 	force      bool        // r was pressed while a cycle ran: a forced one follows it
 	stamp      cache.Stamp // of the files when the view last read them
+	cfgProblem string      // the config file is invalid or gone: the error line
 }
 
 // New makes the model of a view about to open.
@@ -84,6 +107,7 @@ type (
 		changed bool
 		snap    market.Snapshot
 		health  market.Health
+		cfg     ConfigRead
 	}
 )
 
@@ -111,13 +135,52 @@ func (m Model) tick() tea.Cmd {
 // ends, outside Update.
 func (m Model) readDisk() tea.Cmd {
 	files, name, seen := m.o.Engine.C, m.o.Engine.P.Name(), m.stamp
+	readConfig, seenConfig := m.o.ReadConfig, m.o.ConfigStamp
 	return func() tea.Msg {
+		var cr ConfigRead
+		if readConfig != nil {
+			cr = readConfig(seenConfig)
+		}
 		st := files.Stamp()
 		if st == seen {
-			return diskRead{stamp: st}
+			return diskRead{stamp: st, cfg: cr}
 		}
-		return diskRead{stamp: st, changed: true, snap: files.Load(), health: files.LoadSource(name)}
+		return diskRead{stamp: st, changed: true, snap: files.Load(), health: files.LoadSource(name), cfg: cr}
 	}
+}
+
+// configChanged takes in a changed config file (spec 6.4, 7.2). A valid one
+// replaces the watchlist: removed rows go, added rows have no quote and are
+// due, and not-found rows are due because the file is newer than their last
+// attempt. An invalid or deleted one keeps the last watchlist, and the error
+// line says why.
+func (m Model) configChanged(cr ConfigRead) Model {
+	m.o.ConfigStamp = cr.Stamp
+	if cr.Problem != "" {
+		m.cfgProblem = cr.Problem
+		return m
+	}
+	m.cfgProblem = ""
+	m.o.Cfg, m.o.Notes = cr.Cfg, cr.Notes
+	m.o.ConfigMTime = cr.Stamp.Mod
+	m.snap = m.prune(m.snap)
+	m.top = m.clampTop()
+	return m
+}
+
+// prune keeps only the rows of the watchlist: a ticker removed and added
+// back starts again from the cache, not from memory (S15.6).
+func (m Model) prune(s market.Snapshot) market.Snapshot {
+	want := map[market.Instrument]bool{}
+	for _, in := range m.o.Cfg.Want() {
+		want[in] = true
+	}
+	for in := range s {
+		if !want[in] {
+			delete(s, in)
+		}
+	}
+	return s
 }
 
 // due asks Plan, on what the view holds, whether anything is due now: the
@@ -168,17 +231,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.top = m.clampTop()
 	case cacheLoaded:
-		m.snap = merge(m.snap, msg.snap)
+		m.snap = m.prune(merge(m.snap, msg.snap))
 		m.health = msg.health
 		m.busy = true
 		return m, m.cycle(false)
 	case diskRead:
+		if msg.cfg.Changed {
+			m = m.configChanged(msg.cfg)
+		}
 		if msg.changed {
 			// What other processes fetched (C4): merged, never replacing a
 			// quote with nothing; the block record only by a later one
 			// (protocol rule 5).
 			m.stamp = msg.stamp
-			m.snap = merge(m.snap, msg.snap)
+			m.snap = m.prune(merge(m.snap, msg.snap))
 			if h := msg.health; h.UpdatedAt.After(m.health.UpdatedAt) ||
 				(h.UpdatedAt.Equal(m.health.UpdatedAt) && h.Gen > m.health.Gen) {
 				m.health = h
@@ -192,7 +258,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(next, m.cycle(false))
 	case cycleDone:
 		m.busy = false
-		m.snap = merge(m.snap, msg.res.Snap)
+		m.snap = m.prune(merge(m.snap, msg.res.Snap))
 		m.health = msg.res.Health
 		if w := msg.res.Warn; w != nil && !errors.Is(w, cache.ErrBusy) {
 			m.unwritable = true
@@ -284,7 +350,11 @@ func (m Model) layout() (head, list, foot []string) {
 	if m.help {
 		head, list = nil, helpText
 	}
-	if c := render.Cause(v); c != "" {
+	// One error line, the first of: config problem, block, failed fetches
+	// (7.3); render.Cause orders the last two.
+	if m.cfgProblem != "" {
+		foot = append(foot, m.cfgProblem)
+	} else if c := render.Cause(v); c != "" {
 		foot = append(foot, c)
 	}
 	warnings := append([]string{}, m.o.Notes...)

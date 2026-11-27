@@ -744,3 +744,52 @@ above (default interval), press `r` and watch
 `r` again at once: it does not grow; switch the stand-in to
 `{"status":429}`, wait for the error line, press `r`: the count stays and the
 status line shows `next attempt HH:MM`.
+
+## Live refresh, slice 3 increment 4: config changes (`refresh_increment4_verify_test.go`)
+
+The 9 criteria of increment 4 in `research/build/live-refresh/scope.md`
+(S8.4, S11.3, S11.4, S11.6, S11.10, S11.11, S11.14, S11.19, S11.20), 7.3's
+order of problems on the error line, and outside the criteria a save by
+rename, two saves 300 ms apart, an emptied file, a deleted file that comes
+back and a config grown to 20 tickers. The checks edit the config in their
+temporary folders while the real view runs (real time, real modification
+times); each change is timed from the write (or rename, or delete) to the
+first screen that shows it. The views run at 200 columns so the long
+temporary paths fit; the error line is read as the body line that is neither
+a row nor a group header (`otherLines`). The view's QR7 baseline follows the
+check's own saves. Nothing is scaled. Run of 2026-11-25 (evidence `20261125T193747Z`): the ordinary run of all files, 6 min 19 s; 187 top-level checks pass, 0 fail, 18 skipped (SLOW and LONG); the 8 new checks, the 9 criteria and the 7.3 check pass; the timings below are from the runs of this file.
+
+```sh
+# only these checks (about 25 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S11_3_S8|S11_4_T|S11_6_E|S11_10_11|S11_14_19|S11_20_C|Sec7_3|ConfigSaves)' -v
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S11.3, S8.4 | `TestVerifyView_S11_3_S8_4_TickerAdded/S11_3`, `/S8_4` | Default interval; MSFT added at +3 s: row and price 22 ms after the save, MSFT requested 10 ms after it; XXXX9 (404) requested again 10 ms after the save |
+| S11.4 | `TestVerifyView_S11_4_TickerRemoved` | AAPL removed: gone after 28 ms; the other rows keep their quotes with no request. A reorder (6.4) showed after 1.0 s |
+| S11.6 | `TestVerifyView_S11_6_EditThroughLink` | `~/.config/brl-stocks` a link, `XDG_CONFIG_HOME` unset; the target's file edited: row after 21 ms; the link unchanged |
+| S11.10, S11.11 | `TestVerifyView_S11_10_11_SyntaxError` | Unclosed array saved: prices kept; after 22 ms one line `invalid config <path>: toml: line 4 (last key "tickers"): expected a comma (',') or array terminator (']'), but got '['; showing the last valid watchlist` (read at 320 columns; cut at 200, see below); gone 21 ms after the fix |
+| S11.14, S11.19 | `TestVerifyView_S11_14_19_Deleted` | After 22 ms: `config <path> was deleted: showing the last watchlist`; the rows stay |
+| S11.20 | `TestVerifyView_S11_20_ConfigAppears` | Example watchlist, then a config with MSFT and BBDC4 at the default path: replaced after 21 ms; the no-config warning leaves the status line |
+| 7.3 order of problems | `TestVerifyView_Sec7_3_ConfigProblemFirst` | 503 for everything: `source unreachable: 5 rows not updated · next attempt HH:MM`; a broken config saved: after 21 ms the config line alone (no cause line), still alone 3 s later; fixed: the fetch line back after 20 ms |
+
+Recorded outside the criteria (`TestVerifyView_ConfigSaves_Observations`, and
+the checks above): a save by rename was followed (row after 23 ms; a second
+rename, 1.0 s); two saves 300 ms apart: the screen ended on the second
+(726 ms after it); a deleted file that came back with MSFT: row with a price
+and no error line after 21 ms; a config grown from 2 to 20 tickers: all 20
+rows with quotes 27 ms after the save (18 requests). An emptied file (0 bytes)
+is a valid config with no tickers: every row vanished, the default summary
+line stayed, and nothing on screen said why. A config error line longer than
+the screen is cut at a word without an ellipsis (at 200 columns the end
+`; showing the last valid watchlist` is lost). Some changes showed after about
+1 s instead of about 20 ms (a reorder, a second rename, the second of two
+quick saves); all within 5 s.
+
+Not verified from outside, for these: saves by real editors (vim, VS Code,
+nano) on a real terminal, and a config in a real dotfiles repository behind a
+link. Hand check: with the view of the hand check above open, edit
+`/tmp/brl-view/cfg/brl-stocks/config.toml` in your editor: add `"MSFT"`, save,
+watch the row appear; break a bracket, save, watch the error line name the
+file; undo, save; `rm` the file and watch `... was deleted ...`; write it back.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/lucattelli/brl-stocks/internal/cache"
+	"github.com/lucattelli/brl-stocks/internal/config"
 	"github.com/lucattelli/brl-stocks/internal/deps"
 	"github.com/lucattelli/brl-stocks/internal/engine"
 	"github.com/lucattelli/brl-stocks/internal/tui"
@@ -60,6 +62,12 @@ func runView(ctx context.Context, o options, d deps.Deps) int {
 		Now:         now,
 		Colour:      !noColour,
 	}
+	path := o.configPath
+	if path == "" {
+		path = defaultConfigPath(d)
+	}
+	opts.ReadConfig = configWatcher(path, d)
+	opts.ConfigStamp = configStamp(path)
 	if d.Terminal != nil {
 		return drive(ctx, opts, d.Terminal)
 	}
@@ -335,3 +343,45 @@ func cut(s string, width int) string {
 	}
 	return strings.TrimRight(out, " ")
 }
+
+// configStamp looks at the config file through any symbolic link (D29).
+func configStamp(path string) tui.ConfigStamp {
+	st, err := os.Stat(path)
+	if err != nil {
+		return tui.ConfigStamp{}
+	}
+	return tui.ConfigStamp{Exists: true, Mod: st.ModTime(), Size: st.Size()}
+}
+
+// configWatcher is the view's look at its config file at each heartbeat: a
+// stat, and the file read and parsed again only when the stat changed
+// (design C1; spec 6.4, 7.2). It never writes the file (QR7).
+func configWatcher(path string, d deps.Deps) func(tui.ConfigStamp) tui.ConfigRead {
+	name := tilde(path, d)
+	return func(seen tui.ConfigStamp) tui.ConfigRead {
+		st := configStamp(path)
+		if st == seen {
+			return tui.ConfigRead{Stamp: st}
+		}
+		cr := tui.ConfigRead{Stamp: st, Changed: true}
+		if !st.Exists {
+			cr.Problem = "config " + name + " was deleted: showing the last watchlist"
+			return cr
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			cr.Problem = "cannot read the config " + name + ": " + oneLine(err.Error())
+			return cr
+		}
+		cfg, notes, err := config.Parse(data)
+		if err != nil {
+			cr.Problem = "invalid config " + name + ", last valid watchlist kept: " + oneLine(err.Error())
+			return cr
+		}
+		cr.Cfg, cr.Notes = cfg, notes
+		return cr
+	}
+}
+
+// oneLine keeps a message on the one error line.
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
