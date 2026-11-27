@@ -14,7 +14,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The whole job: about 16 minutes on a hosted runner since Q62 added a
+    # day of view time to the tests and new real-time checks.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       # Go from mise.toml, as on the developer's machine; only Go is
