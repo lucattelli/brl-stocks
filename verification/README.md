@@ -500,8 +500,8 @@ the one-shot checks of S15.8 and S15.9 after the change to the engine.
 | S11.12, S11.17 | `TestVerifyView_S11_12_17_UnknownKey` | Status line `... · unknown config key "colour_scheme"`; every row shown |
 | S11.13, S11.18 | `TestVerifyView_S11_13_18_TwentyFiveTickers` | 25 rows on a 40-line screen; status line `... · 25 tickers; the tool is designed for 20` |
 | S11.15 | `TestVerifyView_S11_15_XDGConfigHome` | A different watchlist at `~/.config` is not shown |
-| S12.1, S12.2, S12.3 | `TestVerifyView_S12_1_3_NoConfig/{xdg_set,xdg_unset}` | 200 columns. The example rows in the order of 7.7 and the default summary line; status line `... · no config file: showing an example watchlist. Put yours at <path>`; nothing created under the config folder |
-| S12.2 at 120 columns | `TestVerifyView_S12_2_PathAt120Columns` | Observation only: the status line is cut at the screen's width. Its text before the path is 98 characters, so at 120 columns 22 characters of the path show; a usual `/home/<user>/.config/brl-stocks/config.toml` would not fit either. The spec does not say what happens to a status line wider than the screen |
+| S12.1, S12.2, S12.3 | `TestVerifyView_S12_1_3_NoConfig/{xdg_set,xdg_unset}` | The example rows in the order of 7.7 and the default summary line; nothing created under the config folder. Changed in increment 6 for D95: `xdg_unset` (path under the home folder) runs at 120 columns and wants `~/.config/brl-stocks/config.toml`; `xdg_set` (a folder outside the home folder) runs at 200 columns and wants the full path. Status line since D95: `... · no config: example watchlist; put yours at <path>` |
+| S12.2 at 120 columns | `TestVerifyView_S12_2_PathAt120Columns` | Observation only, with the path outside the home folder (not shortened by D95). Before increment 6 the warning was cut at the screen's width; how it is shortened and cut is now decided (D95) and checked by S12.6 to S12.8 below |
 | S12.4, S12.5 | `TestVerifyView_S12_4_5_ConfigFlagMissingFile` | Exit 2, no request; `brl-stocks: cannot read the config <path>: open <path>: no such file or directory` |
 | S15.2 | `TestVerifyView_S15_2_FilesUnderHomeCache` | `XDG_CACHE_HOME` unset: the new files are `~/.cache/brl-stocks/cache.v1.json` and `lock` |
 | S15.5, S15.8 | `TestVerifyView_S15_5_8_UnwritableCache/*` | Empty folder 0555; parent 0555 and folder missing; quotes kept, then folder and files read-only (the stand-in's price changed, so the new price shows the view fetched). Quotes shown, requests sent; exactly one screen line about the cache: the status line `... · quotes are not kept: <folder>` (cut at 120 columns, as above). Skipped as root |
@@ -525,21 +525,21 @@ and waits for the screen to change and settle, or 2 s for no change. Run of
 pass, 0 fail, 7 skipped (SLOW and LONG); the 8 new checks, the 11 criteria and
 QR11 pass.
 
-Open questions, not checked as if decided: Q84 (whether left and right arrows
-scroll) and Q85 (whether scrolling counts group header lines). Scrolling is
-checked without groups; left/right and group headers are observations only.
+Open questions when this was written, answered since: Q84 by D92 (left and
+right arrows do nothing) and Q85 by D93 (scrolling moves by one screen line,
+row or group header). Their checks are in increment 6.
 
 | Criterion | Check | Note |
 |---|---|---|
-| S1.6 | `TestVerifyView_S1_6_NarrowTerminal/{started_at_40,resized}` | Started at 40 columns, and started at 120 then resized to 100, 80, 70, 60, 50, 40 and back to 120: every row keeps ticker, price, percent and `HH:MM`, and no line is wider than the screen. Observed drop order (7.3): low and high at 70, name at 50, change value at 40; no sparkline column yet. Observed at 40: the summary line is cut (`IBOV 158.432 +0,32%    S&P 500 6,812.40`; USD/BRL is gone), which the spec does not decide |
+| S1.6 | `TestVerifyView_S1_6_NarrowTerminal/{started_at_40,resized}` | Started at 40 columns, and started at 120 then resized to 100, 80, 70, 60, 50, 40 and back to 120: every row keeps ticker, price, percent and `HH:MM`, and no line is wider than the screen. Observed drop order (7.3): low and high at 70, name at 50, change value at 40; no sparkline column yet. Observed at 40 before increment 6: the summary line was cut (`IBOV 158.432 +0,32%    S&P 500 6,812.40`; USD/BRL gone); since D96 the narrow summary line is checked by S2.9 and S2.10 |
 | S2.4 | `TestVerifyView_S2_4_S9_6_7_Scroll/S2_4` | 25 rows, 120 x 15: the summary line stays the first line through every scroll |
 | S9.2, S9.3, S9.4 | `TestVerifyView_S9_2_4_SortCycle/S9_2` ... `/S9_4` | No groups; file order VALE3 ITUB4 MSFT AAPL PETR4. `s`: PETR4 MSFT VALE3 AAPL ITUB4 (`sort: day change`); `s`: by ticker (`sort: ticker`); `s`: file order |
 | S9.5, S9.10 | `TestVerifyView_S9_5_10_SortInsideGroups` | Groups US then Brasil; after `s`: `US MSFT AAPL Brasil PETR4 VALE3 ITUB4` |
-| S9.6, S9.7 | `TestVerifyView_S2_4_S9_6_7_Scroll/S9_6`, `/S9_7` | No groups (Q85). Down arrow, `j`, `j`: first row 2, 3, 4; up arrow, `k`: 3, 2 |
+| S9.6, S9.7 | `TestVerifyView_S2_4_S9_6_7_Scroll/S9_6`, `/S9_7` | No groups, where every screen line is a row (still valid for the wording of D93). Down arrow, `j`, `j`: first row 2, 3, 4; up arrow, `k`: 3, 2. With group headers: increment 6 |
 | S9.8 | `TestVerifyView_S9_8_Help` | A line for each of `q` quit, `r` refresh, `s` sort, `↑ / k` and `↓ / j` scroll, `?` help. Observed (7.3): `x` closes it and the list is back as before |
 | S9.9 | `TestVerifyView_S9_9_OtherKeysDoNothing` | `x`, `z`, `5`, space, Tab, Enter: the screen identical, each watched for 2 s (an absence of change can only be watched over a time) |
-| Q84 (observation) | `TestVerifyView_S2_4_S9_6_7_Scroll` (evidence) | On a scrolled list, right and left arrows changed nothing |
-| Q85 (observation) | `TestVerifyView_Q85_ScrollWithGroups_Observation` | Two groups: under the column header `Brasil`, then after each `j`: `PETR4`, `AAPL`, `Outros`. Scrolling moves by one screen line, header lines included |
+| Q84 (observation) | `TestVerifyView_S2_4_S9_6_7_Scroll` (evidence) | On a scrolled list, right and left arrows changed nothing. Decided by D92; checked as S9.11 in increment 6 |
+| Q85 (observation) | removed in increment 6 | Decided by D93; the observation became the check `TestVerifyView_S9_6_7_ScrollByScreenLine` |
 
 | Requirement | Check | Note |
 |---|---|---|
@@ -548,3 +548,43 @@ checked without groups; left/right and group headers are observations only.
 Not verified from outside, for these: how a resize looks in the user's own
 terminal window, and its key encodings (hand check above: drag the window
 narrower and wider, and press the arrows, `j`, `k`, `s`, `?`).
+
+### Increment 6: the review's answers, D92 to D96 (`view_increment6_verify_test.go`)
+
+The criteria of increment 6 in `research/build/full-screen-view/scope.md`
+(S2.9, S2.10, S9.11, S12.6 to S12.8, S15.10, S18.5, S18.6, and S9.6, S9.7
+reworded), on the real view; S18.5 and S18.6 as plain commands with the
+output redirected. `resizeAndSettle` resizes and waits for the redraw;
+`ttyRun` runs the binary with each of stdin, stdout and stderr on a
+pseudo-terminal or on a file. Widths are not fixed numbers: they are derived
+from the whole line read at a wide terminal (summary line at 120 columns,
+status line at 200). Changed for D92 to D96: the S12.2 check (above), the
+comments of the increment-5 scroll check, and the Q85 observation (removed,
+now a check). Run of 2026-11-25: the ordinary run of all files, about 2 min
+15 s; 158 top-level checks pass, 0 fail, 7 skipped (SLOW and LONG); the 7 new
+checks and the 11 criteria pass.
+
+| Criterion | Check | Note |
+|---|---|---|
+| S2.9 | `TestVerifyView_S2_9_10_SummaryNarrow/S2_9` | Whole line `IBOV 158.432 +0,32%    S&P 500 6,812.40 -0.11%    USD/BRL 5,4321 +0,08%` (71), separator 4 spaces; without percents 50; with one percent at least 57. At 50, 53, 56 (resized) and 50, 56 (started there): `IBOV 158.432    S&P 500 6,812.40    USD/BRL 5,4321` |
+| S2.10 | `TestVerifyView_S2_9_10_SummaryNarrow/S2_10` | At 49 and 32: `IBOV 158.432    S&P 500 6,812.40`; at 31 and 12: `IBOV 158.432`; at 11: no summary line (the column header is the first line). Every entry whole, no percent, as many as fit with the 4-space separator, resized and started |
+| S9.6, S9.7 | `TestVerifyView_S9_6_7_ScrollByScreenLine/S9_6`, `/S9_7` | 25 tickers: PETR4, AAPL outside groups, `Brasil` (BBDC4), `Outros` (23); 120 x 15. The top line under the column header after `j`, down, `j`, down, `j`: `AAPL`, `Brasil`, `BBDC4`, `Outros`, `ABEV3`; then `k`, up, `k`, up, `k`: `Outros`, `BBDC4`, `Brasil`, `AAPL`, `PETR4` |
+| S9.11 | `TestVerifyView_S9_11_LeftRightDoNothing` | The same list scrolled by three `j`; right, left (as the terminal mode sends them), then both again as CSI and as SS3: the screen identical, each watched for 2 s. `j` afterwards still scrolls |
+| S12.6 | `TestVerifyView_S12_6_ConfigPathWithTilde/*` | No config; `XDG_CONFIG_HOME` unset (`~/.config/brl-stocks/config.toml`) and `~/xdg` (`~/xdg/brl-stocks/config.toml`); 120 and 200 columns; the home folder's real path nowhere on screen |
+| S12.7, S12.8 | `TestVerifyView_S12_7_8_SortLeftOutBeforeWarning/S12_7`, `/S12_8` | Whole status line 114 wide: `B3 open · US open · sort: file order · no config: example watchlist; put yours at ~/.config/brl-stocks/config.toml`; without the sort 95. At 95, 96, 104, 113 (resized and started): `B3 open · US open · no config: example watchlist; put yours at ~/.config/brl-stocks/config.toml`. Recorded: at 114 the whole line; at 94 the warning cut by one character (`...config.tom`, no ellipsis) |
+| S15.10 | `TestVerifyView_S15_10_CacheFolderWithTilde/*` | Cache folder 0555 at `~/.cache/brl-stocks` (`XDG_CACHE_HOME` unset) and `~/xc/brl-stocks`: status line `... · quotes are not kept: ~/.cache/brl-stocks cannot be written`. Skipped as root |
+| S18.5, S18.6 | `TestVerifyView_S18_5_6_NoTerminal/S18_5`, `/S18_6` | Pipes; pipes with `--config`; stdout to a file with stdin and stderr on a terminal; stdout and stderr to files with stdin on a terminal: exit 2, no request, nothing on stdout, one line `brl-stocks: the full-screen view needs a terminal; for redirected output use \`brl-stocks print\`` |
+
+Recorded outside the criteria: with stdin `/dev/null` and the output on a
+terminal the view opens (and `q` on the terminal quits it, exit 0); the spec
+speaks of the output only. Without a terminal, an invalid or a missing config
+gives the no-terminal line and exit 2, not the config message. At 11 columns
+and less the rows are cut (`PETR4     R`), below what S1.6 can keep.
+
+Not verified from outside, for these: the look on the user's own terminal
+(hand check: without a config file, `brl-stocks` in a window of about 100
+columns, then narrower than 95: the sort goes first, then the warning is cut;
+narrow the window below 71 and 50 columns and watch the summary line; with
+groups, press `j` and `k` past a group header; press the left and right
+arrows; and `brl-stocks > /tmp/out.txt; echo $?` prints `2` with one line on
+the terminal).

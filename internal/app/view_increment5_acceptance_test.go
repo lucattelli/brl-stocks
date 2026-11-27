@@ -5,9 +5,10 @@ package app_test
 // docs/spec.md and the view's test boundary; they reuse the helpers of the
 // earlier view tests and of the print acceptance tests.
 //
-// Two questions are open and not guessed here: Q84 (whether left and right
-// scroll) and Q85 (whether scrolling by one row counts group header lines).
-// The scroll tests use a watchlist without groups and only up, down, j, k.
+// When these tests were written, Q84 (whether left and right scroll) and Q85
+// (whether scrolling by one row counts group header lines) were open. They
+// are answered (D92, D93): S9.6 and S9.7 below were updated in increment 6,
+// and S9.11 is in view_increment6_acceptance_test.go.
 
 import (
 	"strconv"
@@ -288,11 +289,12 @@ func rowsUnder(t *testing.T, f, header string) []string {
 }
 
 // S9.6 Given more rows than fit the screen, when the down arrow or `j` is
-// pressed, then the list scrolls down by one row. (D32)
-func TestS9_6_View_DownOrJScrollsDownOneRow(t *testing.T) {
+// pressed, then the list scrolls down by one screen line, whether that line
+// holds a row or a group header. (D32, D93)
+func TestS9_6_View_DownOrJScrollsDownOneLine(t *testing.T) {
 	for _, key := range scrollDownKeys {
 		t.Run(key, func(t *testing.T) {
-			// Given: no groups, so a row is a line (Q85 does not arise)
+			// Given: no groups, so every line of the list holds a row
 			v, before := scrollView(t)
 			top := firstVisible(t, before)
 
@@ -304,15 +306,38 @@ func TestS9_6_View_DownOrJScrollsDownOneRow(t *testing.T) {
 				t.Errorf("after %q the first row on screen is row %d of the file, want %d", key, got+1, top+2)
 			}
 		})
+		t.Run(key+" with group headers", func(t *testing.T) {
+			// Given: two groups; the list starts with the header Brasil, and
+			// the header US is its twelfth line
+			v, before := groupedScrollView(t)
+			at := firstListLine(t, before)
+			if at != 0 {
+				t.Fatalf("given not established: the list does not start at its first line (the header Brasil):\n%s", before)
+			}
+
+			// When: pressed until both headers have left the top, one press
+			// at a time
+			for at <= 11 {
+				v.send(key)
+				f := v.settled().text()
+
+				// Then: one screen line further, whatever the line that left
+				if got := firstListLine(t, f); got != at+1 {
+					t.Fatalf("with %q at the top, %q put %q at the top, want %q (one screen line down):\n%s", groupedLines()[at], key, groupedLines()[got], groupedLines()[at+1], f)
+				}
+				at++
+			}
+		})
 	}
 }
 
 // S9.7 Given more rows than fit the screen and a scrolled list, when the up
-// arrow or `k` is pressed, then the list scrolls up by one row. (D32)
-func TestS9_7_View_UpOrKScrollsUpOneRow(t *testing.T) {
+// arrow or `k` is pressed, then the list scrolls up by one screen line,
+// whether that line holds a row or a group header. (D32, D93)
+func TestS9_7_View_UpOrKScrollsUpOneLine(t *testing.T) {
 	for _, key := range scrollUpKeys {
 		t.Run(key, func(t *testing.T) {
-			// Given: scrolled down twice
+			// Given: no groups, scrolled down twice
 			v, before := scrollView(t)
 			top := firstVisible(t, before)
 			v.send(deps.KeyDown)
@@ -328,6 +353,31 @@ func TestS9_7_View_UpOrKScrollsUpOneRow(t *testing.T) {
 			// Then
 			if got := firstVisible(t, v.settled().text()); got != scrolled-1 {
 				t.Errorf("after %q the first row on screen is row %d of the file, want %d", key, got+1, scrolled)
+			}
+		})
+		t.Run(key+" with group headers", func(t *testing.T) {
+			// Given: two groups, scrolled down past both headers (the
+			// header US is the twelfth line of the list)
+			v, _ := groupedScrollView(t)
+			for i := 0; i < 12; i++ {
+				v.send(deps.KeyDown)
+			}
+			at := firstListLine(t, v.settled().text())
+			if at != 12 {
+				t.Fatalf("given not established: twelve down arrows put %q at the top, want %q", groupedLines()[at], groupedLines()[12])
+			}
+
+			// When: pressed until the list is back at its first line, one
+			// press at a time
+			for at > 0 {
+				v.send(key)
+				f := v.settled().text()
+
+				// Then: one screen line back, whatever the line that came in
+				if got := firstListLine(t, f); got != at-1 {
+					t.Fatalf("with %q at the top, %q put %q at the top, want %q (one screen line up):\n%s", groupedLines()[at], key, groupedLines()[got], groupedLines()[at-1], f)
+				}
+				at--
 			}
 		})
 	}

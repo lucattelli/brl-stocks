@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/x/term"
+
 	"github.com/lucattelli/brl-stocks/internal/app"
 	"github.com/lucattelli/brl-stocks/internal/deps"
 	"github.com/lucattelli/brl-stocks/internal/provider/yahoo"
@@ -17,10 +19,9 @@ func main() {
 	if v, ok := os.LookupEnv("BRL_STOCKS_SOURCE_URL"); ok && v != "" {
 		base = v
 	}
-	tty := false
-	if st, err := os.Stdout.Stat(); err == nil {
-		tty = st.Mode()&os.ModeCharDevice != 0
-	}
+	// A terminal, not just a character device: output sent to /dev/null is
+	// redirected too (D94).
+	tty := term.IsTerminal(os.Stdout.Fd())
 	os.Exit(app.Run(context.Background(), os.Args[1:], deps.Deps{
 		Provider:  yahoo.New(base),
 		Now:       func() time.Time { return time.Now().Round(0) },

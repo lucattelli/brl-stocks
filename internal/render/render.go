@@ -166,13 +166,21 @@ func (v View) marketLine() string {
 	return "B3 " + word(market.B3) + " · US " + word(market.US)
 }
 
-func (v View) summaryLine() string {
-	var parts []string
+// summaryEntry is one entry of the summary line: its label and value, and
+// its percent (coloured), which a narrow screen leaves out first.
+type summaryEntry struct {
+	base    string
+	percent string // "" when the entry has no quote
+	cells   int    // the terminal cells of the percent, without colour
+}
+
+func (v View) summaryEntries() []summaryEntry {
+	var out []summaryEntry
 	for _, in := range v.Cfg.Summary {
 		label := labels[in.Symbol]
 		e := v.Snap[in]
 		if e.Quote == nil {
-			parts = append(parts, label+" "+dash)
+			out = append(out, summaryEntry{base: label + " " + dash})
 			continue
 		}
 		decimals := 2
@@ -184,9 +192,44 @@ func (v View) summaryLine() string {
 		}
 		_, pct := change(e.Quote)
 		br := brazilian(in)
-		parts = append(parts, label+" "+number(e.Quote.Price, decimals, br)+" "+v.paint(signed(pct, 2, br)+"%", pct, 2))
+		p := signed(pct, 2, br) + "%"
+		out = append(out, summaryEntry{base: label + " " + number(e.Quote.Price, decimals, br), percent: v.paint(p, pct, 2), cells: utf8.RuneCountInString(p)})
 	}
-	return strings.Join(parts, "    ")
+	return out
+}
+
+const summarySep = "    "
+
+// summaryLine joins the entries. With a width set (the view), a line too
+// wide leaves out every entry's percent first, then whole entries from the
+// right; an entry is never cut (D96).
+func (v View) summaryLine() string {
+	entries := v.summaryEntries()
+	join := func(n int, percents bool) (string, int) {
+		var parts []string
+		cells := 0
+		for i, e := range entries[:n] {
+			s, c := e.base, utf8.RuneCountInString(e.base)
+			if percents && e.percent != "" {
+				s, c = s+" "+e.percent, c+1+e.cells
+			}
+			if i > 0 {
+				c += len(summarySep)
+			}
+			parts, cells = append(parts, s), cells+c
+		}
+		return strings.Join(parts, summarySep), cells
+	}
+	line, cells := join(len(entries), true)
+	if v.Width <= 0 || cells <= v.Width {
+		return line
+	}
+	for n := len(entries); n > 0; n-- {
+		if line, cells = join(n, false); cells <= v.Width {
+			return line
+		}
+	}
+	return ""
 }
 
 // SummaryLine is the line of summary entries (spec 7.3, 7.4), or "" when

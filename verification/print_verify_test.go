@@ -1838,7 +1838,7 @@ func TestVerifySlow_W6_3_RecoveryAfterBlock(t *testing.T) {
 
 var (
 	rowSyms = []string{"PETR4.SA", "AAPL", "VALE3.SA", "ITUB4.SA", "MSFT"} // the watchlist lines of baseConfig
-	sumSyms = []string{"^BVSP", "^GSPC", "BRL=X"}                           // the summary entries
+	sumSyms = []string{"^BVSP", "^GSPC", "BRL=X"}                          // the summary entries
 )
 
 // S13.22 Given an empty cache and a source that answers, when ten `brl-stocks

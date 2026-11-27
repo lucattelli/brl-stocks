@@ -111,9 +111,12 @@ func runPrint(ctx context.Context, o options, d deps.Deps) int {
 		}
 		return exitUsage
 	}
-	cfg, mtime, notes, err := loadConfig(o.configPath, d)
+	cfg, mtime, notes, example, err := loadConfig(o.configPath, d)
 	if err != nil {
 		return fail(err.Error())
+	}
+	if example != "" {
+		notes = append([]string{"no config file: showing an example watchlist. Put yours at " + example}, notes...)
 	}
 	if d.Provider == nil {
 		fmt.Fprintln(d.Stderr, "brl-stocks: no data source")
@@ -174,8 +177,9 @@ func defaultConfigPath(d deps.Deps) string {
 
 // loadConfig reads the config, through any symbolic link, and never writes
 // it (D29, D35). With no file at the default path, the built-in example is
-// used and a note says where a config belongs.
-func loadConfig(explicit string, d deps.Deps) (config.Config, time.Time, []string, error) {
+// used and example is that path, for the note that says where a config
+// belongs; notes are the config's own warnings.
+func loadConfig(explicit string, d deps.Deps) (cfg config.Config, mtime time.Time, notes []string, example string, err error) {
 	path := explicit
 	if path == "" {
 		path = defaultConfigPath(d)
@@ -183,17 +187,31 @@ func loadConfig(explicit string, d deps.Deps) (config.Config, time.Time, []strin
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) && explicit == "" {
-			return config.Example(), time.Time{}, []string{"no config file: showing an example watchlist. Put yours at " + path}, nil
+			return config.Example(), time.Time{}, nil, path, nil
 		}
-		return config.Config{}, time.Time{}, nil, fmt.Errorf("cannot read the config %s: %v", path, err)
+		return config.Config{}, time.Time{}, nil, "", fmt.Errorf("cannot read the config %s: %v", path, err)
 	}
-	cfg, warns, err := config.Parse(data)
+	cfg, notes, err = config.Parse(data)
 	if err != nil {
-		return config.Config{}, time.Time{}, nil, fmt.Errorf("invalid config %s: %v", path, err)
+		return config.Config{}, time.Time{}, nil, "", fmt.Errorf("invalid config %s: %v", path, err)
 	}
-	var mtime time.Time
 	if st, err := os.Stat(path); err == nil {
 		mtime = st.ModTime()
 	}
-	return cfg, mtime, warns, nil
+	return cfg, mtime, notes, "", nil
+}
+
+// tilde writes a path under the home folder with the home folder as `~`,
+// for the view's status line (D95).
+func tilde(path string, d deps.Deps) string {
+	h := strings.TrimRight(home(d), "/")
+	switch {
+	case h == "":
+		return path
+	case path == h:
+		return "~"
+	case strings.HasPrefix(path, h+"/"):
+		return "~" + path[len(h):]
+	}
+	return path
 }
