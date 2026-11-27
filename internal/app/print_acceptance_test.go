@@ -617,26 +617,43 @@ func TestS13_4_RefreshFlagForcesAFetch(t *testing.T) {
 	}
 }
 
-// S13.5 Given a market closed for more than 30 minutes, with cached quotes,
+// S13.5 Given a market whose trading period ended more than its settle
+// time ago (6.1: 100 minutes for B3, 5 for the others), with cached quotes,
 // when `brl-stocks print` is run, then none of that market's rows is
-// requested. (D15, D50)
+// requested. (D15, D50, D111)
 func TestS13_5_ClosedMarketRowsAreNotRequested(t *testing.T) {
-	// Given: the US market closed since Friday, its quotes in the cache
-	w := newWorld(t, onlyB3Open, `tickers = ["PETR4", "AAPL", "MSFT"]`+"\n")
-	loadQuotes(w.src, w.now, false)
-	w.prime(petr4, aapl, msft)
-	w.advance(5 * time.Minute)
-	beforeAAPL, beforeMSFT := w.src.count(aapl), w.src.count(msft)
+	for _, c := range []struct {
+		name        string
+		primeAt     time.Time // while the market is open
+		runAt       time.Time // just past its settle time
+		rows        []market.Instrument
+		description string
+	}{
+		{"B3, 101 minutes", b3Session.End.Add(-10 * time.Minute), b3Session.End.Add(101 * time.Minute), []market.Instrument{petr4, vale3}, "B3's trading period ended 101 minutes ago"},
+		{"US, 6 minutes", usSession.End.Add(-10 * time.Minute), usSession.End.Add(6 * time.Minute), []market.Instrument{aapl, msft}, "the US trading period ended 6 minutes ago"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// Given: Monday; a print while the market was open filled the
+			// cache; the source still reports that day's trading period
+			w := newWorld(t, c.primeAt, `tickers = ["PETR4", "VALE3", "AAPL", "MSFT"]`+"\n")
+			loadQuotes(w.src, w.now, true)
+			w.prime(c.rows...)
+			w.now = c.runAt
+			before := map[market.Instrument]int{}
+			for _, in := range c.rows {
+				before[in] = w.src.count(in)
+			}
 
-	// When
-	w.runOK("print")
+			// When
+			w.runOK("print")
 
-	// Then
-	if got := w.src.count(aapl) - beforeAAPL; got != 0 {
-		t.Errorf("AAPL requested %d times while the US market is closed, want 0", got)
-	}
-	if got := w.src.count(msft) - beforeMSFT; got != 0 {
-		t.Errorf("MSFT requested %d times while the US market is closed, want 0", got)
+			// Then
+			for _, in := range c.rows {
+				if got := w.src.count(in) - before[in]; got != 0 {
+					t.Errorf("%s requested %d times when %s, want 0", in.Symbol, got, c.description)
+				}
+			}
+		})
 	}
 }
 
