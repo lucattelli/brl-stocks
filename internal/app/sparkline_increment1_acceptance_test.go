@@ -436,6 +436,20 @@ func TestS10_13_View_TenRisingPrices(t *testing.T) {
 	}
 }
 
+// S10.23 Given a row whose series is the 3 prices 10, 10.5 and 17, when the
+// view is drawn at full width, then its sparkline reads `▁▂█`. (D104, D105,
+// D110)
+func TestS10_23_View_HalfwayTakesTheHigherLevel(t *testing.T) {
+	// Given: on the scale from 10 to 17 the levels are one unit apart, so
+	// 10.5 is exactly halfway between the first two
+	_, _, d := sparkView(t, plainConfig, true, 10, 10.5, 17)
+	for _, tk := range []string{"PETR4", "VALE3", "AAPL"} {
+		if s, _ := rowSpark(t, d.text(), tk); s != "▁▂█" {
+			t.Errorf("row %s, its series 10, 10.5, 17, reads %q, want ▁▂█: %q", tk, s, rowLine(t, d.text(), tk))
+		}
+	}
+}
+
 // S10.14 Given a row whose series holds the same price 10 times, when the
 // view is drawn at full width, then its sparkline reads `▄▄▄▄▄▄▄▄▄▄`.
 // (D104, D105)
@@ -566,7 +580,8 @@ func TestS10_19_View_CachedRowShowsItsSparkline(t *testing.T) {
 }
 
 // S10.20 Given the view at full width, when the column header is drawn, then
-// the sparkline's column is headed `TODAY`. (D107)
+// the sparkline's column is headed `TODAY`, starting where the sparklines
+// start. (D107, D109)
 func TestS10_20_View_ColumnHeadedToday(t *testing.T) {
 	_, _, d := sparkView(t, plainConfig, true, fiveOnLevels...)
 	col := sparkColumn(t, d.text(), "PETR4")

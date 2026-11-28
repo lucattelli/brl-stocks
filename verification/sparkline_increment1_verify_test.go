@@ -6,9 +6,8 @@
 // before the session's start and after its end). Outside the criteria: gaps,
 // one price, very large and very small ranges, a narrow terminal resized back,
 // `print` and `print --json` with a series in the answer, 20 tickers. Built on
-// the recommended answers of Q104 (`TODAY` starts at the sparkline's column)
-// and Q105 (a price halfway between two levels takes the higher one; recorded,
-// not asserted). See README.md.
+// D109 (`TODAY` starts where the sparklines start, S10.20) and D110 (a price
+// halfway between two levels takes the higher one, S10.23). See README.md.
 package verification
 
 import (
@@ -295,7 +294,7 @@ func TestVerifyView_S10_SparklineShapes(t *testing.T) {
 			c.failf("BBDC4: something in the sparkline column: %q", strings.Join(s.rowLines("BBDC4"), ""))
 		}
 	})
-	crit(e, "S10.20", "the column is headed TODAY (Q104: at the sparkline's column)", func(c *ck) {
+	crit(e, "S10.20", "the column is headed TODAY, starting where the sparklines start", func(c *ck) {
 		if hy < 0 {
 			c.failf("no column header")
 			return
@@ -308,7 +307,7 @@ func TestVerifyView_S10_SparklineShapes(t *testing.T) {
 			return
 		}
 		if x := s.xs[hy][i]; x != col {
-			c.failf("TODAY starts at column %d, the sparklines at %d (Q104)", x, col)
+			c.failf("TODAY starts at column %d, the sparklines at %d", x, col)
 		}
 	})
 }
@@ -618,7 +617,7 @@ func TestVerifyView_SparklineEdgeCases_Observations(t *testing.T) {
 			{"AAPL", "one price"},
 			{"VALE3", "0.01, 50000, 100000, 3, 99999.99"},
 			{"ITUB4", "34.150 to 34.153"},
-			{"MSFT", "0, 1, 14 (1 is level 0.5: Q105 says the higher, ▂)"},
+			{"MSFT", "0, 1, 14 (1 is level 0.5: the higher, ▂, by D110)"},
 		} {
 			sp, _, _ := spark(s, x.tk)
 			c.notef("%s (%s): %q", x.tk, x.what, sp)
@@ -669,4 +668,16 @@ func keysOf(m map[string]any) []string {
 		k = append(k, x)
 	}
 	return k
+}
+
+// S10.23 [view] Given a row whose series is the 3 prices 10, 10.5 and 17, when
+// the view is drawn at full width, then its sparkline reads `▁▂█` (10.5 is
+// level 0.5 of 7: the higher level, D110).
+func TestVerifyView_S10_23_HalfwayTakesHigher(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t, "S10.23: 10, 10.5, 17", "tickers = [\"PETR4\"]\n")
+	e.setSeries(state4{Series: map[string]seriesSpec{"PETR4.SA": {Closes: prices(10, 10.5, 17)}}}, "PETR4 10, 10.5, 17")
+	v, s := e.sparkView(viewCols, []string{"PETR4"}, nil)
+	v.done2()
+	crit(e, "S10.23", "the prices 10, 10.5, 17 read ▁▂█", func(c *ck) { wantSpark(c, s, "PETR4", "▁▂█") })
 }

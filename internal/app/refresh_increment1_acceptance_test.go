@@ -641,7 +641,8 @@ func TestS8_3_View_NotFoundRetriedHourly(t *testing.T) {
 
 // S15.3 Given the view has run for eight hours of open market, when the
 // cache folder is measured, then its size is within 10% of its size after
-// the first full refresh. (D20, D50)
+// the first refresh in which every row has its full sparkline. (D20, D50,
+// D108)
 func TestS15_3_View_CacheSizeAfterEightHours(t *testing.T) {
 	// Given: Monday 11:00 UTC; the source reports one long session, 10:00 to
 	// 20:00 UTC, for every instrument, so the market is open for the eight
@@ -659,6 +660,9 @@ func TestS15_3_View_CacheSizeAfterEightHours(t *testing.T) {
 	w.src.answer(ibov, quote("Ibovespa", "", 158432.10, 157919.80, b3, at))
 	w.src.answer(sp500, quote("S&P 500", "", 6812.40, 6819.90, us, at))
 	w.src.answer(usdbrl, quote("USD/BRL", "BRL", 5.4321, 5.4278, b3, at))
+	// Every answer carries a series of 20 prices, so the fetch at start is
+	// the first refresh in which every row has its full sparkline (D108)
+	setAllSeries(w.src, seq(10, 0.5, 20)...)
 	v := openOnClock(t, w)
 	v.src.setBefore(func(in market.Instrument, now time.Time) {
 		f := v.src.fakeSource
@@ -673,7 +677,7 @@ func TestS15_3_View_CacheSizeAfterEightHours(t *testing.T) {
 	v.settled(viewGuard)
 	first := cacheSize(t, w.cacheDir)
 	if first == 0 {
-		t.Fatalf("given not established: the cache folder %s is empty after the first full refresh", w.cacheDir)
+		t.Fatalf("given not established: the cache folder %s is empty after the first refresh, every row with its full series", w.cacheDir)
 	}
 
 	// When: the view runs for eight hours
@@ -687,7 +691,7 @@ func TestS15_3_View_CacheSizeAfterEightHours(t *testing.T) {
 
 	// Then
 	if diff := after - first; diff*10 > first || -diff*10 > first {
-		t.Errorf("the cache folder holds %d bytes after eight hours, %d after the first full refresh: more than 10%% apart", after, first)
+		t.Errorf("the cache folder holds %d bytes after eight hours, %d after the first refresh with every full sparkline: more than 10%% apart", after, first)
 	}
 }
 
