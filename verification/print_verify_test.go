@@ -671,18 +671,41 @@ func TestVerifyW6_5_RefreshWithinFiveSecondsDoesNotFetch(t *testing.T) {
 // second run 12 s later, so only the closed market explains a missing request.
 func TestVerifyS13_05_ClosedMarketNotRequested(t *testing.T) {
 	t.Parallel()
-	e := newEnv(t, "S13.5", baseConfig)
-	e.setSource(state{ClosedMarkets: []string{"b3"}}, "B3 closed 2 h ago, US open")
-	r1 := e.run("print")
-	e.wantExit(r1, 0)
-	e.sleep(pastInterval, "cache becomes older than the interval")
-	r2 := e.run("print")
-	e.wantExit(r2, 0)
-	e.wantNotRequested(r2, []string{"PETR4.SA", "VALE3.SA", "ITUB4.SA"}, "rows of the closed market")
-	if c := bySymbol(r2.reqs); c["AAPL"] == 0 || c["MSFT"] == 0 {
-		e.failf("control: the rows of the open US market were expected to be requested (got %s)", fmtCounts(c))
+	// Reworded by D111: "ended more than its settle time ago (100 minutes for
+	// B3, 5 for the others)"; before, more than 30 minutes, tested with 2 h.
+	// Each variant's period ends that long before every answer; the other
+	// market is open, as a control.
+	for _, v := range []struct {
+		name    string
+		market  string
+		ago     int64
+		closed  []string
+		control []string
+	}{
+		{"b3_ended_101min_ago", "b3", 6060, []string{"PETR4.SA", "VALE3.SA", "ITUB4.SA"}, []string{"AAPL", "MSFT"}},
+		{"b3_ended_2h_ago", "b3", 7200, []string{"PETR4.SA", "VALE3.SA", "ITUB4.SA"}, []string{"AAPL", "MSFT"}},
+		{"us_ended_6min_ago", "us", 360, []string{"AAPL", "MSFT"}, []string{"PETR4.SA", "VALE3.SA", "ITUB4.SA"}},
+	} {
+		v := v
+		t.Run(v.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t, "S13.5 "+v.name, baseConfig)
+			e.setSource(state{ClosedMarkets: []string{v.market}, ClosedAgoSeconds: v.ago}, fmt.Sprintf("%s period ended %d s before each answer", v.market, v.ago))
+			r1 := e.run("print")
+			e.wantExit(r1, 0)
+			e.sleep(pastInterval, "cache becomes older than the interval")
+			r2 := e.run("print")
+			e.wantExit(r2, 0)
+			e.wantNotRequested(r2, v.closed, "rows of the market past its settle time")
+			c := bySymbol(r2.reqs)
+			for _, s := range v.control {
+				if c[s] == 0 {
+					e.failf("control: the open market's row %s was expected to be requested (got %s)", s, fmtCounts(c))
+				}
+			}
+			e.logf("NOTE       requests in the second run: %s\n", fmtCounts(c))
+		})
 	}
-	e.logf("NOTE       ^BVSP (summary entry of the closed market) requests in the second run: %d\n", bySymbol(r2.reqs)["^BVSP"])
 }
 
 // unreachable sets up: cached quotes, open market, then a source that cannot

@@ -13,11 +13,10 @@ const (
 	NotFoundWait = time.Hour
 	ForceGuard   = 5 * time.Second // a forced refresh skips a row attempted this recently
 
-	ClaimTTL     = 20 * time.Second // a claim, and a probe claim, expire after this
-	settleB3     = 30 * time.Minute // provisional, waits on Q62
-	settleOther  = 5 * time.Minute  // provisional, waits on Q62
-	reopenWindow = 30 * time.Minute // provisional, waits on Q62
-	reopenEvery  = 5 * time.Minute  // provisional, waits on Q62
+	ClaimTTL       = 20 * time.Second  // a claim, and a probe claim, expire after this
+	settleB3       = 100 * time.Minute // after the reported end, B3's closing price (D111)
+	settleOther    = 5 * time.Minute   // after the reported end, the other markets (D111, D113)
+	holidayRecheck = 5 * time.Minute   // the second check after the usual open (D112)
 )
 
 // Failure is the last failed fetch of a row.
@@ -180,6 +179,9 @@ func rowDue(w Instrument, e Entry, in PlanInput) bool {
 	if !ok {
 		return false
 	}
+	// At the usual open, one check, and one more 5 minutes later; an answer
+	// that still carries the last session both times is a holiday, and the
+	// row waits for the next weekday's usual open (rule 7, D112).
 	last := e.FetchedAt
 	if e.LastAttempt.After(last) {
 		last = e.LastAttempt
@@ -187,7 +189,8 @@ func rowDue(w Instrument, e Entry, in PlanInput) bool {
 	if last.Before(open) {
 		return true
 	}
-	return now.Before(open.Add(reopenWindow)) && now.Sub(last) >= reopenEvery
+	again := open.Add(holidayRecheck)
+	return !now.Before(again) && last.Before(again)
 }
 
 // FailureWait is the wait after a row's n-th failed fetch in a row (D50).
@@ -245,9 +248,10 @@ func latestExpectedOpen(s Session, now time.Time) (time.Time, bool) {
 
 // MarketOpen reports whether a market is open: whether the newest session
 // among its instruments contains now (D47), or the session expected after it
-// does, the same hours on a later weekday (spec 6.4: a closed market opens
-// when its next session starts, before any quote of it has come; holidays
-// wait on Q62). known is false when no quote of that market is at hand.
+// does, the same hours on a later weekday (spec 6.1: a closed market opens
+// when its next session starts, before any quote of it has come), until an
+// answer since then still carries the last session (a holiday, D112). known
+// is false when no quote of that market is at hand.
 func MarketOpen(m Market, want []Instrument, s Snapshot, now time.Time) (open, known bool) {
 	var newest Session
 	for _, w := range want {
@@ -269,7 +273,18 @@ func MarketOpen(m Market, want []Instrument, s Snapshot, now time.Time) (open, k
 		return false, true
 	}
 	start, ok := latestExpectedOpen(newest, now)
-	return ok && now.Before(start.Add(newest.End.Sub(newest.Start))), true
+	if !ok || !now.Before(start.Add(newest.End.Sub(newest.Start))) {
+		return false, true
+	}
+	// The expected session no longer counts once a row has been fetched
+	// since it started and still carries the last session: the newest
+	// session is that last one, so the day may be a holiday (rule 6, D112).
+	for _, w := range want {
+		if e := s[w]; w.Hours() == m && e.Quote != nil && !e.FetchedAt.Before(start) {
+			return false, true
+		}
+	}
+	return true, true
 }
 
 // State of a row on screen (spec 6.2).

@@ -133,6 +133,9 @@ Sources so far:
 | D108 | **QR8 and S15.3 measure the cache against its size after the first refresh in which every row has its full sparkline** (ten points, D104), not after the very first refresh: a view started in the first minutes of a session stores short series that then fill to ten. | Q103, option A, the recommendation. For the spec (QR8, S15.3). Rejected: keeping the wording, which fails in ordinary use. | 2026-11-26 |
 | D109 | **The `TODAY` header starts at the sparkline's column.** | Q104, the recommendation, as built in PR #19. For the spec (7.3, S10.20). | 2026-11-26 |
 | D110 | **A price exactly halfway between two levels of the sparkline takes the higher level.** | Q105, the recommendation, as built in PR #19. For the spec (7.3). | 2026-11-26 |
+| D111 | **A market's session ends where the source's trading period says; after that end, a B3 row is refreshed for 100 minutes (replacing the 30 of P31) and a row of any other market for 5,** so that B3's closing-call price, which arrives up to 92 minutes after the reported end (F45, F46), is shown. The market is shown as closed from the reported end. | Q106, option A, the recommendation. Changes D50 (P31: 30 minutes for B3). For the spec (4, 6.1, S5.8) and the design (rule 7 of `Plan`). Accepted knowingly: from November to March, B3 shows as closed from 17:00 São Paulo time while it trades until 18:00, and each B3 row makes about 70 more requests a day. Rejected: a built-in rule for B3's hours (B); showing B3 open while quote times pass the end (C). | 2026-11-27 |
+| D112 | **A holiday is recognised at the market's usual open: a row is checked then and once more 5 minutes later; if the source's answer still carries the last session, the market stays closed and its rows are not checked again until the next weekday's usual open.** A holiday costs at most two requests per row. A late open comes from the start the source reports. | Q107, option A, the recommendation. Changes spec 6.1 (a holiday costs none) and the build's provisional rule (every 5 minutes for 30 minutes). Rests on F43; a late start (F26) is unverified. For the spec (6.1, S5.9) and the design (rule 7 of `Plan`). Rejected: the build's 30 minutes of checks (B); a built-in holiday calendar (C). | 2026-11-27 |
+| D113 | **Routine points of Q62:** the US and S&P 500 settle time stays 5 minutes (F44); USD/BRL is unchanged; a B3 row between the open and the first trade shows what the source says (open, yesterday's price, 0.00%, an empty sparkline, yesterday's quote time) with no special case; a holiday row shows the last session's price and change, like any closed market; S5.9 rests on F43 for the US, and a B3 holiday stays unverified. | Q108, all five as recommended. For the spec (6.1, S5.9, section 12). | 2026-11-27 |
 
 ## Facts learned
 
@@ -222,15 +225,11 @@ Q99–Q102 (slice 4's scope, the sparkline's shape) are answered: D104–D107.
 
 Q103–Q105 (slice 4) are answered: D108–D110, recorded in the PR on top of slice 4's stack.
 
-Waiting on the user (round 18, PR on top of slice 4's stack):
-- Q106 — B3's close, an hour after the source says
-- Q107 — What a holiday costs
-- Q108 — Routine points of Q62 (one batch)
-- Q62 — How open, close and holidays are decided, and how many checks a closed or holiday market may cost (spec 6.1 says none). The research is done (F43–F47, 2026-11-27); asked as Q106–Q108 (round 18), waiting on the user
+Q62 (close, open and holidays) was asked as Q106–Q108 after the research of F43–F47, and is answered: D111–D113.
 
 Design questions from the spec's handover (section 10), waiting on the design document; the converged points answer most of them provisionally:
 - How a config change is noticed through a symbolic link within 5 seconds (C2: a stat on the heartbeat)
-- How the closing quote is recognised after the close (C7; waits on Q62)
+- How the closing quote is recognised after the close (C7): answered by D111, a fixed settle time per market, no recognition
 - How the replaceable source is bounded and how tests replace it (C9, C10, C15)
 - How a refresh stops sending requests once the source refuses (C13)
 - Whether source-specific settings are exposed to the user (C12: no)
@@ -248,6 +247,7 @@ _The product is built in slices: a group of acceptance criteria that reaches the
 | 2 | Full-screen view, static | 95 criteria tagged `view` in five increments, by `research/build/full-screen-view/scope.md`; QR1, QR2, QR7, QR10, QR11, QR12 | Built and verified (F38, F39), in PRs #2–#8 and #10 (the review's answers, increment 6), awaiting merge | Approvals: the view's test boundary and `github.com/charmbracelet/x/vt` (#2), `github.com/charmbracelet/x/term` (#10). Questions: none (Q84–Q88 answered, D92–D96). Hand checks: the look on a real terminal, resize and keys in the user's own terminal, S17.1 and QR10 through the view. Not run: the SLOW check of S6.10 at 12 minutes |
 | 3 | Live refresh in the view | 30 criteria tagged `view` in four increments (8, 5, 8, 9), by `research/build/live-refresh/scope.md`; S5.9 and S5.11 wait on Q62; QR4, QR5, QR6, QR8, QR11 with the view open, by verification | Verified (2026-11-25): PR 0 #11; increment 1 #12 (time passes with a healthy source); increment 2 #13 (failures over time; other processes' fetches; QR4, QR5 scaled); increment 3 #14 (`r`); increment 4 #15 (config changes while open); closing PR #16. F41 | Approval: the view's clock in the test boundary (#11). Q95–Q98 answered (D99–D102), recorded in #17. Hand checks: `research/build/live-refresh/hand-checks.md`. Not run: the SLOW and LONG checks. S5.9 and S5.11 need Q62 |
 | 4 | Sparkline | 22 criteria tagged `view` (S10.1–S10.22) in one increment, by `research/build/sparkline/scope.md`; S10.9 by verification | Verified (2026-11-26): PR 0 #18; increment 1 #19 (the sparkline); closing PR on top. F42 | Q99–Q102 answered (D104–D107): S10.11–S10.22 join increment 1. Q103–Q105 answered (D108–D110), recorded in the PR on top. Hand checks: `research/build/sparkline/hand-checks.md`. Test boundary unchanged |
+| 5 | Close, open and holidays (Q62) | 10 criteria (S5.3, S5.8, S5.9, S5.11, S5.13–S5.17, S13.5) in one increment, by `research/build/market-hours/scope.md` | Verified (2026-11-27): the research PR #22; increment 1 in the PR on top. 14 acceptance tests (5 red, 9 shown failing), the build in `internal/market/plan.go`, new verification checks; ordinary verification 438 s | Hand checks: `research/build/market-hours/hand-checks.md` (B3's closing price; the next holidays, 24 and 25 Dec). S5.17 by acceptance test and hand check only |
 | G1 | Groundwork: CI (D83) | — | Done 2026-11-24 (PR #1): passed; failed on a planted fault (wrong green, caught by TestS16_1); passed on the revert | Branch protection on `main` (D84), set by the user |
 
 ## Research backlog

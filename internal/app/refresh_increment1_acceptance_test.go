@@ -452,26 +452,28 @@ func TestS5_2_View_IntervalOf120Seconds(t *testing.T) {
 	}
 }
 
-// S5.3 Given the US market has been closed for more than 30 minutes and
-// every US row has a quote, when the view stays open for 10 minutes, then no
-// US row is requested. (D15, D50)
+// S5.3 Given the US trading period ended more than 5 minutes ago and every
+// US row has a quote, when the view stays open for 10 minutes, then no US row
+// is requested. (D15, D50, D111, D113)
 func TestS5_3_View_ClosedUSRowsAreNotRequested(t *testing.T) {
 	for _, c := range []struct {
 		name, config string
 		load         func(src *fakeSource, now time.Time)
 		us           []string
 	}{
-		{"criterion", plainConfig, func(src *fakeSource, now time.Time) { loadQuotes(src, now, false) }, []string{"AAPL"}},
-		{"20 tickers", twentyConfig(), loadTwentyUSClosed, twentyUS},
+		{"criterion", plainConfig, func(src *fakeSource, now time.Time) { loadQuotes(src, now, true) }, []string{"AAPL"}},
+		{"20 tickers", twentyConfig(), func(src *fakeSource, now time.Time) { loadTwenty(src, now) }, twentyUS},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			// Given: Monday 13:20 UTC, US closed since Friday 21:00 (the
-			// source reports Friday's session); a print fetches every row
-			start := onlyB3Open.Add(-10 * time.Minute)
-			w := clockWorld(t, start, c.config)
-			c.load(w.src, w.now)
+			// Given: Monday; the US trading period in the source's answer
+			// ended at 21:00 UTC; a print at 20:50, while it was open,
+			// fetched every row; the view opens at 21:06, 6 minutes after
+			// the end
+			usEnd := usSession.End
+			w := clockWorld(t, usEnd.Add(-10*time.Minute), c.config)
+			c.load(w.src, usEnd.Add(-10*time.Minute))
 			w.prime(instruments(c.us...)...)
-			w.advance(10 * time.Minute)
+			w.now = usEnd.Add(6 * time.Minute)
 			v := openOnClock(t, w)
 			f := v.settled(viewGuard).text()
 			for _, tk := range c.us {
@@ -480,13 +482,13 @@ func TestS5_3_View_ClosedUSRowsAreNotRequested(t *testing.T) {
 				}
 			}
 
-			// When: until 13:40, before the US session of the day (14:30)
-			clockAt(t, v.elapse(10*time.Minute), onlyB3Open.Add(10*time.Minute))
+			// When
+			clockAt(t, v.elapse(10*time.Minute), usEnd.Add(16*time.Minute))
 
 			// Then
 			for _, in := range instruments(c.us...) {
 				if at := v.src.times(in); len(at) != 0 {
-					t.Errorf("US row %s, its market closed for days, was requested %d times while the view was open (at %v), want none", in.Symbol, len(at), at)
+					t.Errorf("US row %s, its trading period ended 6 minutes before the view opened, was requested %d times while the view was open (at %v), want none", in.Symbol, len(at), at)
 				}
 			}
 		})
@@ -529,21 +531,33 @@ func TestS5_7_View_NextSessionStartsRowsRequested(t *testing.T) {
 	}
 }
 
-// S5.8 Given B3 closed less than 30 minutes ago and a B3 row whose quote
-// time is before the close, when a refresh interval passes, then that row is
-// requested again. (D50)
+// S5.8 Given B3's trading period ended less than 100 minutes ago, when a
+// refresh interval passes, then each B3 row is requested again. (D50, D111)
 func TestS5_8_View_JustClosedRowIsRequestedAgain(t *testing.T) {
-	// Given: Monday 20:10 UTC, B3 closed at 20:00; the source's B3 quotes are
-	// from 19:45; the default interval, 60 seconds
-	start := monday.Add(20*time.Hour + 10*time.Minute)
-	w := clockWorld(t, start, `tickers = ["PETR4", "VALE3"]`+"\n")
-	loadQuotes(w.src, monday.Add(20*time.Hour), true)
+	for _, c := range []struct {
+		name, config string
+		b3           []string
+		load         func(src *fakeSource, now time.Time)
+	}{
+		{"criterion", `tickers = ["PETR4", "VALE3"]` + "\n", []string{"PETR4", "VALE3"}, func(src *fakeSource, now time.Time) { loadQuotes(src, now, true) }},
+		{"20 tickers", twentyConfig(), twentyB3, func(src *fakeSource, now time.Time) { loadTwenty(src, now) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			justClosedRequestedAgain(t, c.config, c.b3, c.load)
+		})
+	}
+}
+
+func justClosedRequestedAgain(t *testing.T, config string, b3 []string, load func(src *fakeSource, now time.Time)) {
+	// Given: Monday 21:35 UTC; the B3 trading period in the source's answer
+	// ended at 20:00, 95 minutes ago; its quotes are from 19:45; the default
+	// interval, 60 seconds
+	start := b3Session.End.Add(95 * time.Minute)
+	w := clockWorld(t, start, config)
+	load(w.src, b3Session.End)
 	v := openOnClock(t, w)
 	f := v.settled(viewGuard)
-	if st := marketStates(t, f); !strings.Contains(st, "B3 closed") {
-		t.Fatalf("given not established: the status line does not show B3 closed: %q", st)
-	}
-	for _, tk := range []string{"PETR4", "VALE3"} {
+	for _, tk := range b3 {
 		if line := rowLine(t, f.text(), tk); !strings.Contains(line, "R$") {
 			t.Fatalf("given not established: row %s has no quote: %q", tk, line)
 		}
@@ -558,9 +572,9 @@ func TestS5_8_View_JustClosedRowIsRequestedAgain(t *testing.T) {
 	v.elapse(61 * time.Second)
 
 	// Then
-	for _, in := range []market.Instrument{petr4, vale3} {
+	for _, in := range instruments(b3...) {
 		if n := v.src.requestedIn(in, from, to); n == 0 {
-			t.Errorf("B3 row %s, closed 10 minutes ago with a quote from before the close, was not requested again by the heartbeat after one interval, in (%v, %v]; requested at %v",
+			t.Errorf("B3 row %s, its trading period ended 95 minutes ago, was not requested again by the heartbeat after one interval, in (%v, %v]; requested at %v",
 				in.Symbol, from.UTC(), to.UTC(), v.src.times(in))
 		}
 	}
