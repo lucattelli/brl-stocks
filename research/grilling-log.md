@@ -195,6 +195,8 @@ Sources so far:
 
 _Questions waiting on research or on the user, and what they wait on._
 
+Last round: Round 18 (Q106–Q108, PR #22). Rounds were not recorded here before brl 0.6.3; the number is taken from the PR descriptions.
+
 Reopened on 2026-11-23 by the design exploration (D37 stands for the behaviour agreed up to Q37).
 
 Design and behaviour questions Q38–Q42 and Q57–Q61 are answered (D53–D62). The spec was updated for D59, D60 and D62 on 2026-11-23.
