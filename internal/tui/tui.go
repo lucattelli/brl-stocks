@@ -332,7 +332,7 @@ var helpText = []string{
 }
 
 func (m Model) render() render.View {
-	return render.View{Cfg: m.o.Cfg, Snap: m.snap, Health: m.health, Now: m.o.Now(),
+	return render.View{Cfg: m.o.Cfg, Snap: m.snap, Health: m.health, Now: m.o.Now(), Sparkline: true,
 		Colour: m.o.Colour, Sort: m.sort, Width: m.width}
 }
 

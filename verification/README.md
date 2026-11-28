@@ -793,3 +793,46 @@ link. Hand check: with the view of the hand check above open, edit
 `/tmp/brl-view/cfg/brl-stocks/config.toml` in your editor: add `"MSFT"`, save,
 watch the row appear; break a bracket, save, watch the error line name the
 file; undo, save; `rm` the file and watch `... was deleted ...`; write it back.
+
+## The sparkline, slice 4 increment 1 (`sparkline_increment1_verify_test.go`)
+
+S10.1 to S10.22 on the real view, built on the recommended answers of Q104
+(`TODAY` starts at the sparkline's column; asserted with S10.20 and S10.22)
+and Q105 (halfway takes the higher level; recorded only). The sparkline is
+read as the last run of `▁▂▃▄▅▆▇█` blocks on a row; its column from the
+emulator's cells. Added to the stand-in, without changing the existing
+controls: `series` (`{"<symbol>": {"closes": [...], "before": [...],
+"after": [...]}}`): the session's prices (null is a gap, `[]` no prices) and
+prices timed before the session's start and after its end, in the answer's
+`timestamp` and `indicators`. Nothing is scaled. Run of 2026-11-26 (evidence `20261126T021601Z`): the ordinary run of all files, 6 min 28 s; 197 top-level checks pass, 0 fail, 18 skipped (SLOW and LONG); the 11 new checks and S10.1 to S10.22 pass; this file alone runs in about 15 s.
+
+```sh
+# only these checks (about 15 s, in parallel)
+mise exec -- go test -tags verification ./verification/ -run 'TestVerifyView_(S10_|SparklineEdge)|TestVerifyPrint_NoSparkline' -v
+```
+
+| Criterion | Check | Note |
+|---|---|---|
+| S10.1, S10.2, S10.4 to S10.7, S10.10 to S10.15, S10.17, S10.20 | `TestVerifyView_S10_SparklineShapes/S10_1` ... `/S10_20` | One screen: PETR4 (B3 open, 24 made-up rising prices): `▁▂▃▃▄▅▆▆▇█`, green, the row ends with it; AAPL (US closed 2 h ago) 10 to 19: `▁▂▃▃▄▅▆▆▇█`, red; VALE3 the same price 10 times: `▄▄▄▄▄▄▄▄▄▄`, no colour; ITUB4 4 prices: `▁▅▃█`; MSFT 25 prices, lowest first, highest last: `▁▃▃▃▄▃▃▄▄█`; BBDC4 no prices and XXXX9 not found: nothing in the column. Header `... TIME   TODAY`, TODAY at the sparklines' column |
+| S10.3 | `TestVerifyView_S10_3_NoDetailOnKeys` | `r`, `s` three times, down, up, `j`, `k`, then `?` and `x`: no line that is not a row appears beyond those already there (the status line's sort aside) |
+| S10.8, S10.21 | `TestVerifyView_S10_8_21_OneCellNarrower` | Widest line at 120 columns: 87 cells. At 86 (resized and started): no sparkline, no `TODAY`; at 87 both (control); resized back to 120: sparklines back |
+| S10.9 | `TestVerifyView_S10_9_OutsideTheSession` | AAPL (closed): 1000 and 5 before the session, 0.01 and 900 after; PETR4 (open): 1000 and 0.01 before; MSFT 0.01 after; every session 10 to 19: all read `▁▂▃▃▄▅▆▆▇█` |
+| S10.16 | `TestVerifyView_S10_16_NoDataYet` | Empty cache, answers held: each row its ticker and 7 `—`, nothing after the time's `—` |
+| S10.18 | `TestVerifyView_S10_18_StaleKeepsSparkline` | Interval 10 s; 503 after the first fetch: PETR4 `!10s` with the same `▁▂▃▃▄▅▆▆▇█`, and every row's line unchanged |
+| S10.19 | `TestVerifyView_S10_19_CachedSparkline` | A view run leaves the cache; answers then held 20 s: PETR4 shows `▁▂▃▃▄▅▆▆▇█` before any answer |
+| S10.22 | `TestVerifyView_S10_22_AlignedAfterWidestTime/{own_rows,20_tickers}` | `print` leaves the cache; 12 s later VALE3 answers 503 (`!12s`): every sparkline and `TODAY` start two cells after the end of `HH:MM !12s`. QR1 |
+
+Recorded outside the criteria (`TestVerifyView_SparklineEdgeCases_Observations`,
+`TestVerifyPrint_NoSparklineNoSeries`): gaps are left out (10, gap, 12, gap,
+gap, 15, 19 drew `▁▃▅█`, 4 characters); one price draws `▄`; a range of 0.01
+to 100000 drew `▁▄█▁█`; 34.150 to 34.153 drew `▁▃▆▃█` (the smallest range is
+stretched to the full height); 0, 1, 14 drew `▁▂█` and ITUB4's 34, 35, 34.5,
+36 drew `▁▅▃█`, both prices at exactly level 0.5 or 3.5 taking the higher
+level (Q105's recommendation). `print` (table) has no sparkline and no
+`TODAY`, `print --json` no series key (7.4, 7.5). With 20 tickers every
+sparkline lines up (S10.22).
+
+Not verified from outside, for these: how the blocks and colours look in the
+user's own terminal and font (a font without the eighth blocks would show
+boxes). Hand check: in the view of the hand check above, look at the `TODAY`
+column at full width, then narrow the window until it goes.
