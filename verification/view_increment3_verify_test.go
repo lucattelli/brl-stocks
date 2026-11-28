@@ -77,7 +77,13 @@ func TestVerifyView_S5_4_5_USClosed(t *testing.T) {
 				c.failf("row %s: want the close %q, got %q", tk, want, p.price)
 			}
 			cl := time.Now().Add(-7200 * time.Second)
-			if _, ok := hhmmIn(p.rest[4], cl.Add(-2*time.Minute), cl.Add(time.Minute)); !ok {
+			// 7.3: `HH:MM`, or `DD/MM` when the quote is not from today (the
+			// tool runs with TZ=UTC; near midnight the close is yesterday).
+			if day := s.at.UTC().Format("2006-01-02"); cl.UTC().Format("2006-01-02") != day {
+				if want := cl.UTC().Format("02/01"); p.rest[4] != want {
+					c.failf("row %s: the close is from %s, not today: want the date %q, got %q", tk, cl.UTC().Format("2006-01-02"), want, p.rest[4])
+				}
+			} else if _, ok := hhmmIn(p.rest[4], cl.Add(-2*time.Minute), cl.Add(time.Minute)); !ok {
 				c.failf("row %s: want the quote time of the close (about %s), got %q", tk, closeHHMM, p.rest[4])
 			}
 			if m, _, _, ok := staleMark(s.rowLines(tk)[0]); ok {

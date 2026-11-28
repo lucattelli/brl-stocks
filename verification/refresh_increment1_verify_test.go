@@ -76,7 +76,11 @@ func (v *view) hold(until time.Time, period time.Duration, fn func(i int, s scre
 }
 
 // arrivals returns the arrival times of the requests for sym in [from, to).
+// The stand-in records arrivals in whole milliseconds (unix_ms, rounded
+// down), so from and to are rounded down to the millisecond as well: a
+// request in the same millisecond as from, after it, counts.
 func arrivals(recs []record, sym string, from, to time.Time) []time.Time {
+	from, to = time.UnixMilli(from.UnixMilli()), time.UnixMilli(to.UnixMilli())
 	var out []time.Time
 	for _, r := range recs {
 		at := time.UnixMilli(r.UnixMS)
