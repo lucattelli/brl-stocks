@@ -119,7 +119,7 @@ func (e *Engine) Cycle(ctx context.Context, r Request) (snap market.Snapshot, he
 - **Serves:** QR2–QR8, QR11, QR12; S5–S8, S13, S15.
 - **Rejected:** a scheduler goroutine, per-row timers, a daemon serving `print`, a file watcher, one file per ticker, an embedded database (`proposal-*.md`, section "What I rejected").
 - **Consequence:** the tool wakes once a second even when every market is closed; that costs two `stat` calls. A config change is seen within about two seconds (S11.3 allows five).
-- **Risk accepted:** the numbers in C16 (8 requests in parallel, 5 seconds each, rounds of 10 and 20 seconds) are guesses.
+- **Risk accepted:** the numbers in C16 (8 requests in parallel, 5 seconds each, rounds of 10 and 20 seconds) are guesses. The 5 seconds per request were kept after slice 3's verification saw a 5-second answer given up (D100); QR11's stand-in answers after 4 seconds, under that limit.
 
 ### A short lock, per-row claims, fetch outside the lock (D54)
 
@@ -276,7 +276,7 @@ Nothing else beyond the standard library: flags, HTTP, JSON, the file lock, and 
 | **Two watchlists at once are not supported (D68, accepted).** With one shared cache, two `print` loops on different configs prune each other's rows at every commit and refetch them at every call: up to about 3,300 requests in ten minutes for 23 entries (F31). Nothing in the tool prevents it | A block by the source while two configs are in use | A cache per config file, or a way to print one group, would remove it; neither is designed |
 | A process killed between receiving a refusal and writing it, twice in a row, lets a second and third round start: up to 8 requests each, above QR5's 10 | Not testable short of fault injection | Accepted; the window is the few milliseconds of one write |
 | Only 401, 403 and 429 count as a refusal. A 404 with a JSON "Not Found" error is an unknown ticker (F27) | A refusal that arrives as 200 with an error body, or as a 404 without that body (backlog) | `provider/yahoo`, and the count under QR5 |
-| The numbers of C16 | QR11 and S13.9 measured against a slow stand-in | Constants in `engine` |
+| The numbers of C16 (the 5 seconds per request kept by D100) | QR11 and S13.9 measured against a slow stand-in; a real source that often answers after more than 5 seconds | Constants in `engine` |
 | A config edit that keeps size, inode and modification time is not seen; one that keeps an older modification time is reloaded but does not retry not-found rows | A test that replaces the file with `cp -p` | The stamp, or C8's rule |
 | The Lip Gloss and TOML versions are not checked | The first build | Section 6 |
 

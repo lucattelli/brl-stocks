@@ -679,16 +679,19 @@ func TestVerifyLong_View_S8_3_NotFoundThreeHours(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // QR11 [view] A key press changes the screen within 100 ms, also while a
-// refresh is running. Measured with a stand-in source that answers after 5
-// seconds: the view opens on a healthy source; then the stand-in holds its
-// answers 5 s; once a request of the next heartbeat refresh has arrived and is
-// unanswered, `?`, `x`, `s`, `s` are pressed, each timed from the write of the
-// key to the first change of the emulated screen. Not parallel.
+// refresh is running. Measured with a stand-in source that answers after 4
+// seconds, so that the fetch is answered and not given up (D100): the view
+// opens on a healthy source; then the stand-in holds its answers 4 s (and
+// PETR4's price becomes 12.34); once a request of the next heartbeat refresh
+// has arrived and is unanswered, `?`, `x`, `s`, `s` are pressed, each timed
+// from the write of the key to the first change of the emulated screen. Then
+// the held refresh must be answered: PETR4 shows R$ 12,34, no row stale, no
+// `source unreachable`. Not parallel.
 func TestVerifyView_QR11_KeysDuringHeartbeatRefresh(t *testing.T) {
 	e := newEnv(t, "QR11 (view) during a heartbeat refresh", baseConfig)
 	v := e.openRows(tickers, nil)
 	switched := time.Now()
-	e.setSource(state{DelayMS: 5000}, "answers after 5 s")
+	e.setSource(state{DelayMS: 4000, Quotes: map[string]override{"PETR4.SA": {Price: fp(12.34)}}}, "answers after 4 s; PETR4 12.34")
 	var inflight record
 	deadline := time.Now().Add(15 * time.Second)
 	for inflight.Symbol == "" {
@@ -705,7 +708,7 @@ func TestVerifyView_QR11_KeysDuringHeartbeatRefresh(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	e.logf("HEARTBEAT  request #%d for %s arrived at +%s, held 5 s\n", inflight.Seq, inflight.Symbol,
+	e.logf("HEARTBEAT  request #%d for %s arrived at +%s, held 4 s\n", inflight.Seq, inflight.Symbol,
 		time.UnixMilli(inflight.UnixMS).Sub(v.start).Round(time.Millisecond))
 	type lat struct {
 		key string
@@ -725,7 +728,32 @@ func TestVerifyView_QR11_KeysDuringHeartbeatRefresh(t *testing.T) {
 		ls = append(ls, lat{k.name, s.at.Sub(at), ok, at})
 		v.waitStable("settled", 2*time.Second, 150*time.Millisecond, func(screen) bool { return true })
 	}
+	sAns, okAns := v.waitFor("the held refresh answered (PETR4 R$ 12,34)", time.Until(time.UnixMilli(inflight.UnixMS).Add(7*time.Second)), func(s screen) bool {
+		return strings.Contains(strings.Join(s.rowLines("PETR4"), ""), "R$ 12,34")
+	})
+	if okAns {
+		sAns, _ = v.waitStable("settled after the answers", 3*time.Second, 300*time.Millisecond, func(screen) bool { return true })
+	}
+	v.logScreen("SCREEN AFTER THE HELD REFRESH", sAns, nil)
 	r := v.quit([]byte("q"), "q")
+	crit(e, "QR11 answered", "the refresh held 4 s is answered: new quotes, no stale row, no `source unreachable`", func(c *ck) {
+		if !okAns {
+			c.failf("PETR4 does not show the held answer's R$ 12,34: %q", sAns.rowLines("PETR4"))
+		}
+		if el := errorLines(sAns); len(el) != 0 {
+			c.failf("error line after the held refresh: %q", el)
+		}
+		for _, tk := range tickers {
+			if m, _, _, ok := staleMark(strings.Join(sAns.rowLines(tk), "")); ok {
+				c.failf("%s stale after the held refresh: %s", tk, m)
+			}
+		}
+		for _, q := range r.reqs {
+			if q.UnixMS >= inflight.UnixMS-1000 && q.UnixMS < inflight.UnixMS+1000 && q.Status != 200 {
+				c.failf("held request #%d %s: status %d, want answered (200)", q.Seq, q.Symbol, q.Status)
+			}
+		}
+	})
 	crit(e, "QR11", "each key changes the screen within 100 ms while a heartbeat refresh runs", func(c *ck) {
 		lastKey := ls[len(ls)-1].at
 		var rec record
